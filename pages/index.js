@@ -5,7 +5,7 @@ import { TEAMS, REGION_NAMES, SEED_ORDER, ROUND_LABELS, winProb, simTournament }
 import useLiveScores from "../lib/useLiveScores";
 import Head from "next/head";
 
-const BATCH = 20000;
+const BATCH = 5000;
 const MODE_MAP = { kenpom:0, contrarian:1, montecarlo:2 };
 const C = {
   bg:"#0a0f1a",surface:"#111827",card:"#1a2235",border:"#2a3550",
@@ -288,11 +288,11 @@ export default function Home() {
               }}>↻ REFRESH</button>
               <div style={{width:1,height:24,background:C.border,margin:"0 4px"}}/>
               {[
-                {key:"kenpom",label:"KENPOM",color:C.green},
-                {key:"contrarian",label:"CONTRARIAN",color:C.red},
-                {key:"montecarlo",label:"MONTE CARLO",color:C.purple},
-                {key:"mixed",label:"MIX",color:C.accent},
-              ].map(m=>(<button key={m.key} onClick={()=>!running&&setMode(m.key)} style={{
+                {key:"kenpom",label:"KENPOM",color:C.green,tip:"Pure KenPom probabilities — normalCDF with tempo-adjusted spreads. The analytics baseline."},
+                {key:"contrarian",label:"CONTRARIAN",color:C.red,tip:"Shifts win probability toward upsets by the upset bias amount. Generates chalkier underdogs."},
+                {key:"montecarlo",label:"MONTE CARLO",color:C.purple,tip:"Adds random noise (±15%) to each game's win probability. Maximum chaos and variance."},
+                {key:"mixed",label:"MIX",color:C.accent,tip:"Rotates through all three modes (KenPom → Contrarian → Monte Carlo) across sims."},
+              ].map(m=>(<button key={m.key} title={m.tip} onClick={()=>!running&&setMode(m.key)} style={{
                 background:mode===m.key?m.color:"transparent",border:`2px solid ${m.color}`,color:mode===m.key?"#fff":m.color,
                 borderRadius:6,padding:"6px 10px",cursor:running?"not-allowed":"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:10,opacity:running?0.5:1,
               }}>{m.label}</button>))}
@@ -300,14 +300,12 @@ export default function Home() {
                 style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,borderRadius:6,padding:"5px 8px",fontFamily:"monospace",fontSize:11}}>
                 {[10000,100000,500000,1000000].map(n=><option key={n} value={n}>{n.toLocaleString()}</option>)}
               </select>
-              {(mode==="contrarian"||mode==="mixed")&&(
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{fontSize:9,color:C.textMuted,fontWeight:700,whiteSpace:"nowrap"}}>UPSET BIAS</span>
-                  <input type="range" min="0.05" max="0.5" step="0.05" value={upsetBias} onChange={e=>setUpsetBias(parseFloat(e.target.value))} disabled={running}
-                    style={{width:80,accentColor:C.red,cursor:running?"not-allowed":"pointer"}}/>
-                  <span style={{fontSize:10,color:C.red,fontWeight:700,fontFamily:"monospace",minWidth:28}}>{upsetBias.toFixed(2)}</span>
-                </div>
-              )}
+              <div style={{display:"flex",alignItems:"center",gap:6}} title="How much to shift win probability toward the underdog in Contrarian and Mix modes">
+                <span style={{fontSize:9,color:C.textMuted,fontWeight:700,whiteSpace:"nowrap"}}>UPSET BIAS</span>
+                <input type="range" min="0.05" max="0.5" step="0.05" value={upsetBias} onChange={e=>setUpsetBias(parseFloat(e.target.value))} disabled={running}
+                  style={{width:80,accentColor:C.red,cursor:running?"not-allowed":"pointer"}}/>
+                <span style={{fontSize:10,color:C.red,fontWeight:700,fontFamily:"monospace",minWidth:28}}>{upsetBias.toFixed(2)}</span>
+              </div>
               <div style={{flex:1}}/>
               {!running?(<button onClick={generate} style={{background:`linear-gradient(135deg,${C.accent},${C.accentDim})`,border:"none",color:"#fff",borderRadius:8,padding:"9px 22px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,letterSpacing:1}}>
                 SIMULATE {target.toLocaleString()}</button>
@@ -317,7 +315,7 @@ export default function Home() {
               <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.textDim,marginBottom:3,fontFamily:"monospace"}}>
                 <span>{done.toLocaleString()} / {target.toLocaleString()}</span><span style={{color:C.accent}}>{pct}%</span>
               </div>
-              <div style={{height:5,background:C.card,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${C.accent},${C.purple},${C.accent})`,backgroundSize:"200% 100%",borderRadius:3,transition:"width 0.3s ease-out",animation:"shimmer 1.5s ease-in-out infinite"}}/></div>
+              <div style={{height:5,background:C.card,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${C.accent},${C.purple},${C.accent})`,backgroundSize:"200% 100%",borderRadius:3,transition:"width 0.15s linear",animation:"shimmer 1.5s ease-in-out infinite"}}/></div>
             </div>)}
             {live.error&&<div style={{marginTop:8,fontSize:11,color:C.red}}>⚠ {live.error}</div>}
           </div>
