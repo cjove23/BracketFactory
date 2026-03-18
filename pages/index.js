@@ -126,7 +126,7 @@ export default function Home() {
   const [running,setRunning]=useState(false);
   const [target,setTarget]=useState(1000000);
   const [done,setDone]=useState(0);
-  const [mode,setMode]=useState("kenpom");
+  const [mode,setMode]=useState("mixed");
   const [upsetBias,setUpsetBias]=useState(0.05);
   const [results,setResults]=useState(null);
   const [elapsed,setElapsed]=useState(0);
@@ -332,6 +332,7 @@ export default function Home() {
               <div>
                 <div style={{fontSize:9,color:C.textMuted,fontWeight:700,letterSpacing:1}}>AVG UPSETS</div>
                 <div style={{fontSize:22,fontWeight:800,color:C.red,fontFamily:"monospace"}}>{avgUpsets}</div>
+                <div style={{fontSize:9,color:C.textMuted}}>historical avg: ~8.5</div>
               </div>
               <div>
                 <div style={{fontSize:9,color:C.textMuted,fontWeight:700,letterSpacing:1}}>BEST CHAMPION</div>
@@ -563,11 +564,14 @@ export default function Home() {
 
           {/* Empty state */}
           {!results&&!running&&(
-            <div style={{textAlign:"center",padding:"50px 20px",color:C.textMuted}}>
-              <div style={{fontSize:48,marginBottom:10}}>🏀</div>
-              <div style={{fontSize:15,fontWeight:600}}>Bracket Factory — Live Tournament Tracking</div>
-              <div style={{fontSize:12,marginTop:8,maxWidth:500,margin:"8px auto 0",lineHeight:1.6}}>
-                Click <strong>GO LIVE</strong> to start pulling ESPN scores. Then hit <strong>SIMULATE</strong> to see championship odds. Completed games auto-lock into the bracket.
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"80px 20px",color:C.textMuted,minHeight:"40vh"}}>
+              <div style={{fontSize:56,marginBottom:14}}>🏀</div>
+              <div style={{fontSize:20,fontWeight:700,color:C.text,marginBottom:6}}>Bracket Factory</div>
+              <div style={{fontSize:13,fontWeight:500,color:C.textDim,marginBottom:16}}>Live Tournament Tracking · KenPom-Calibrated Simulations</div>
+              <div style={{fontSize:12,maxWidth:460,lineHeight:1.7,color:C.textMuted}}>
+                Click <strong style={{color:C.green}}>GO LIVE</strong> to start pulling ESPN scores in real time.
+                Then hit <strong style={{color:C.accent}}>SIMULATE</strong> to see updated championship odds.
+                Completed games auto-lock into the bracket.
               </div>
             </div>
           )}
