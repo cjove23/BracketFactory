@@ -1,7 +1,7 @@
 // pages/index.js
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { TEAMS, REGION_NAMES, SEED_ORDER, ROUND_LABELS, simTournament, calcPoolEV } from "../lib/bracket";
+import { TEAMS, REGION_NAMES, SEED_ORDER, ROUND_LABELS, winProb, simTournament } from "../lib/bracket";
 import useLiveScores from "../lib/useLiveScores";
 import Head from "next/head";
 
@@ -13,6 +13,106 @@ const C = {
   purple:"#a855f7",red:"#ef4444",text:"#f1f5f9",textDim:"#94a3b8",textMuted:"#64748b",
 };
 const COLORS=["#f97316","#3b82f6","#a855f7","#22c55e","#ef4444","#eab308","#06b6d4","#ec4899","#8b5cf6","#14b8a6","#f59e0b","#6366f1","#10b981","#f43f5e","#0ea5e9","#84cc16"];
+const ALL_ROUNDS = ["R64","R32","S16","E8","F4","NCG"];
+
+// Dynamically compute current matchups based on locked results
+// Walks the bracket tree: locked games → known winner advances, unlocked games with known participants → current matchup
+function getCurrentMatchups(locked, lockedFF) {
+  const matchups = [];
+  const regionWinners = [];
+
+  for (let ri = 0; ri < 4; ri++) {
+    const rName = REGION_NAMES[ri];
+    const region = TEAMS[rName];
+    const locks = locked[rName];
+    let currentSeeds = SEED_ORDER.slice();
+
+    for (let roundIdx = 0; roundIdx < 4; roundIdx++) {
+      const nextSeeds = [];
+      const gamesInRound = currentSeeds.length / 2;
+      const roundLocks = locks[roundIdx];
+
+      for (let gi = 0; gi < gamesInRound; gi++) {
+        const sA = currentSeeds[gi * 2];
+        const sB = currentSeeds[gi * 2 + 1];
+
+        if (sA == null || sB == null) {
+          nextSeeds.push(null);
+          continue;
+        }
+
+        if (roundLocks && roundLocks[gi] != null) {
+          nextSeeds.push(roundLocks[gi]);
+        } else {
+          const hiSeed = Math.min(sA, sB), loSeed = Math.max(sA, sB);
+          const hi = region[hiSeed], lo = region[loSeed];
+          const loWinPct = winProb(lo.adjEM, lo.adjT, hi.adjEM, hi.adjT, lo.oRk, lo.dRk, hi.oRk, hi.dRk) * 100;
+          const seedGap = loSeed - hiSeed;
+          matchups.push({
+            region: rName, round: ROUND_LABELS[roundIdx], hiSeed, loSeed, seedGap,
+            hiName: hi.name, loName: lo.name, hiEM: hi.adjEM, loEM: lo.adjEM,
+            mismatch: lo.adjEM > hi.adjEM,
+            emGap: (lo.adjEM - hi.adjEM).toFixed(1),
+            loWinPct: loWinPct.toFixed(1),
+          });
+          nextSeeds.push(null);
+        }
+      }
+      currentSeeds = nextSeeds;
+    }
+
+    if (currentSeeds.length === 1 && currentSeeds[0] != null) {
+      const s = currentSeeds[0];
+      regionWinners.push({ seed: s, team: region[s], region: rName });
+    } else {
+      regionWinners.push(null);
+    }
+  }
+
+  // F4: East vs South (idx 0), West vs Midwest (idx 1)
+  for (let si = 0; si < 2; si++) {
+    const a = regionWinners[si * 2], b = regionWinners[si * 2 + 1];
+    if (a && b && lockedFF.f4[si] == null) {
+      const hiSeed = Math.min(a.seed, b.seed), loSeed = Math.max(a.seed, b.seed);
+      const hi = hiSeed === a.seed ? a : b, lo = hiSeed === a.seed ? b : a;
+      const loWinPct = winProb(lo.team.adjEM, lo.team.adjT, hi.team.adjEM, hi.team.adjT, lo.team.oRk, lo.team.dRk, hi.team.oRk, hi.team.dRk) * 100;
+      matchups.push({
+        region: `${hi.region} / ${lo.region}`, round: "F4", hiSeed, loSeed, seedGap: loSeed - hiSeed,
+        hiName: hi.team.name, loName: lo.team.name, hiEM: hi.team.adjEM, loEM: lo.team.adjEM,
+        mismatch: lo.team.adjEM > hi.team.adjEM,
+        emGap: (lo.team.adjEM - hi.team.adjEM).toFixed(1),
+        loWinPct: loWinPct.toFixed(1),
+      });
+    }
+  }
+
+  // NCG
+  const f4Winners = [];
+  for (let si = 0; si < 2; si++) {
+    if (lockedFF.f4[si] != null) {
+      const a = regionWinners[si * 2], b = regionWinners[si * 2 + 1];
+      if (a && b) {
+        const winner = a.seed === lockedFF.f4[si] ? a : b;
+        f4Winners.push(winner);
+      } else { f4Winners.push(null); }
+    } else { f4Winners.push(null); }
+  }
+  if (f4Winners[0] && f4Winners[1] && lockedFF.ncg == null) {
+    const a = f4Winners[0], b = f4Winners[1];
+    const hiSeed = Math.min(a.seed, b.seed), loSeed = Math.max(a.seed, b.seed);
+    const hi = hiSeed === a.seed ? a : b, lo = hiSeed === a.seed ? b : a;
+    const loWinPct = winProb(lo.team.adjEM, lo.team.adjT, hi.team.adjEM, hi.team.adjT, lo.team.oRk, lo.team.dRk, hi.team.oRk, hi.team.dRk) * 100;
+    matchups.push({
+      region: "Championship", round: "NCG", hiSeed, loSeed, seedGap: loSeed - hiSeed,
+      hiName: hi.team.name, loName: lo.team.name, hiEM: hi.team.adjEM, loEM: lo.team.adjEM,
+      mismatch: lo.team.adjEM > hi.team.adjEM,
+      emGap: (lo.team.adjEM - hi.team.adjEM).toFixed(1),
+      loWinPct: loWinPct.toFixed(1),
+    });
+  }
+
+  return matchups;
+}
 
 function Tip({active,payload}){if(!active||!payload?.length)return null;const d=payload[0]?.payload;return(
   <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 12px",fontSize:11,fontFamily:"monospace"}}>
@@ -28,7 +128,6 @@ export default function Home() {
   const [done,setDone]=useState(0);
   const [mode,setMode]=useState("kenpom");
   const [upsetBias,setUpsetBias]=useState(0.2);
-  const [poolSize,setPoolSize]=useState(50);
   const [results,setResults]=useState(null);
   const [elapsed,setElapsed]=useState(0);
   const [tab,setTab]=useState("live");
@@ -38,7 +137,9 @@ export default function Home() {
   const generate = useCallback(()=>{
     cancelRef.current=false; setRunning(true); setDone(0); setResults(null); setElapsed(0);
     startRef.current=performance.now();
-    const stats={total:0,champCounts:{},champSeedCounts:{},regionWinnerCounts:[{},{},{},{}],f4SeedCounts:{},upsetTotal:0,upsetDist:{},teamDepthCounts:{}};
+    const stats={total:0,champCounts:{},champSeedCounts:{},regionWinnerCounts:[{},{},{},{}],f4SeedCounts:{},
+      upsetTotal:0,upsetDist:{},teamDepthCounts:{},
+      teamUpsetCounts:{},teamUpsetSims:{},teamUpsetByRound:{}};
     let completed=0;
     const modeNums=mode==="mixed"?[0,1,2]:[MODE_MAP[mode]??0];
 
@@ -62,6 +163,15 @@ export default function Home() {
           if(!stats.teamDepthCounts[tName]) stats.teamDepthCounts[tName]=new Array(7).fill(0);
           stats.teamDepthCounts[tName][depth]++;
         }
+        // Upset tracking
+        const seen={};
+        for(const u of res.upsetTeams){
+          stats.teamUpsetCounts[u.name]=(stats.teamUpsetCounts[u.name]||0)+1;
+          if(!seen[u.name]){stats.teamUpsetSims[u.name]=(stats.teamUpsetSims[u.name]||0)+1;seen[u.name]=true;}
+          if(!stats.teamUpsetByRound[u.name])stats.teamUpsetByRound[u.name]={};
+          stats.teamUpsetByRound[u.name][u.round]=(stats.teamUpsetByRound[u.name][u.round]||0)+1;
+        }
+
       }
       completed=end;setDone(completed);
       if(completed>=target){setRunning(false);setElapsed(Math.round(performance.now()-startRef.current));setResults({...stats});}
@@ -73,10 +183,8 @@ export default function Home() {
   const pct=target>0?Math.round((done/target)*100):0;
   const champData=results?Object.entries(results.champCounts).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([name,count])=>({name,count,pct:((count/results.total)*100).toFixed(2)})):[];
   const avgUpsets=results?(results.upsetTotal/results.total).toFixed(2):0;
-  const poolData=results?calcPoolEV(results,poolSize).slice(0,15):[];
 
   // Bracket advancement data
-  const DEPTH_LABELS=["R64","R32","S16","E8","F4","NCG","Champ"];
   const bracketData=results?Object.fromEntries(REGION_NAMES.map(rName=>[rName,
     Array.from({length:16},(_,si)=>{
       const seed=SEED_ORDER[si];const team=TEAMS[rName][seed];
@@ -86,7 +194,26 @@ export default function Home() {
     })
   ])):null;
 
-  // Count locked games
+  // Upset team data with round breakdown
+  const upsetTeamData = useMemo(()=>{
+    if(!results) return [];
+    const seedLookup={};
+    for(const r of REGION_NAMES) for(let s=1;s<=16;s++){const t=TEAMS[r][s];if(!seedLookup[t.name])seedLookup[t.name]={seed:s,region:r};}
+    return Object.entries(results.teamUpsetSims)
+      .map(([name,simCount])=>{
+        const info=seedLookup[name]||{seed:"?",region:"?"};
+        const byRound=results.teamUpsetByRound[name]||{};
+        const roundPcts={};
+        for(const r of ALL_ROUNDS) roundPcts[r]=byRound[r]?((byRound[r]/results.total)*100).toFixed(2):null;
+        return{name,seed:info.seed,region:info.region,simCount,simPct:((simCount/results.total)*100).toFixed(2),roundPcts,byRound};
+      }).sort((a,b)=>b.simCount-a.simCount);
+  },[results]);
+
+  // Dynamic matchup analysis — walks the bracket based on locked results
+  const currentMatchups = useMemo(() => getCurrentMatchups(live.locked, live.lockedFF), [live.locked, live.lockedFF]);
+  const mismatchGames = currentMatchups.filter(g => g.mismatch);
+  const closeGames = currentMatchups.filter(g => !g.mismatch && parseFloat(g.loWinPct) >= 35).sort((a, b) => parseFloat(b.loWinPct) - parseFloat(a.loWinPct));
+
   let lockedCount=0;
   for(const r of REGION_NAMES){const l=live.locked[r];for(const rd in l)for(const g in l[rd])if(l[rd][g]!=null)lockedCount++;}
 
@@ -95,8 +222,7 @@ export default function Home() {
     borderRadius:6,padding:"6px 12px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:11,letterSpacing:0.5,
   }}>{children}</button>);
 
-  const liveCount = live.liveGames.filter(g=>g.status==="live").length;
-  const finalCount = live.liveGames.filter(g=>g.status==="final").length;
+  const liveCount=live.liveGames.filter(g=>g.status==="live").length;
 
   return (
     <>
@@ -119,12 +245,12 @@ export default function Home() {
           </div>
 
           {/* Live Score Ticker */}
-          {live.liveGames.filter(g=>g.status==="live").length > 0 && (
+          {liveCount > 0 && (
             <div style={{background:"rgba(239,68,68,0.08)",border:`1px solid rgba(239,68,68,0.25)`,borderRadius:12,padding:14,marginBottom:16,overflow:"hidden"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
                 <span style={{background:C.red,color:"#fff",fontSize:9,fontWeight:800,padding:"3px 10px",borderRadius:4,fontFamily:"monospace",animation:"pulse 2s infinite"}}>LIVE</span>
                 <span style={{fontSize:13,fontWeight:700}}>{liveCount} game{liveCount!==1?"s":""} in progress</span>
-                {live.lastUpdate && <span style={{fontSize:10,color:C.textMuted,marginLeft:"auto"}}>Updated: {new Date(live.lastUpdate).toLocaleTimeString()}</span>}
+                {live.lastUpdate&&<span style={{fontSize:10,color:C.textMuted,marginLeft:"auto"}}>Updated: {new Date(live.lastUpdate).toLocaleTimeString()}</span>}
               </div>
               <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:4}}>
                 {live.liveGames.filter(g=>g.status==="live").map(g=>(
@@ -153,20 +279,14 @@ export default function Home() {
           {/* Controls */}
           <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:16}}>
             <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
-              {/* Polling toggle */}
-              <button onClick={live.isPolling ? live.stopPolling : live.startPolling} style={{
+              <button onClick={live.isPolling?live.stopPolling:live.startPolling} style={{
                 background:live.isPolling?C.green:"transparent",border:`2px solid ${C.green}`,color:live.isPolling?"#fff":C.green,
                 borderRadius:8,padding:"6px 14px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:11,
-              }}>
-                {live.isPolling ? "⏸ STOP LIVE" : "▶ GO LIVE"}
-              </button>
-              <button onClick={live.fetchScores} style={{
-                background:"transparent",border:`2px solid ${C.blue}`,color:C.blue,
+              }}>{live.isPolling?"⏸ STOP LIVE":"▶ GO LIVE"}</button>
+              <button onClick={live.fetchScores} style={{background:"transparent",border:`2px solid ${C.blue}`,color:C.blue,
                 borderRadius:8,padding:"6px 14px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:11,
               }}>↻ REFRESH</button>
-
               <div style={{width:1,height:24,background:C.border,margin:"0 4px"}}/>
-
               {[
                 {key:"kenpom",label:"KENPOM",color:C.green},
                 {key:"contrarian",label:"CONTRARIAN",color:C.red},
@@ -176,32 +296,22 @@ export default function Home() {
                 background:mode===m.key?m.color:"transparent",border:`2px solid ${m.color}`,color:mode===m.key?"#fff":m.color,
                 borderRadius:6,padding:"6px 10px",cursor:running?"not-allowed":"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:10,opacity:running?0.5:1,
               }}>{m.label}</button>))}
-
               <select value={target} onChange={e=>setTarget(Number(e.target.value))} disabled={running}
                 style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,borderRadius:6,padding:"5px 8px",fontFamily:"monospace",fontSize:11}}>
                 {[10000,100000,500000,1000000].map(n=><option key={n} value={n}>{n.toLocaleString()}</option>)}
               </select>
-
-              <select value={poolSize} onChange={e=>setPoolSize(Number(e.target.value))} disabled={running}
-                style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,borderRadius:6,padding:"5px 8px",fontFamily:"monospace",fontSize:11}}>
-                {[10,25,50,100,250,500].map(n=><option key={n} value={n}>{n}p pool</option>)}
-              </select>
-
               <div style={{flex:1}}/>
-
               {!running?(<button onClick={generate} style={{background:`linear-gradient(135deg,${C.accent},${C.accentDim})`,border:"none",color:"#fff",borderRadius:8,padding:"9px 22px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,letterSpacing:1}}>
-                SIMULATE {target.toLocaleString()}
-              </button>):(<button onClick={()=>{cancelRef.current=true}} style={{background:C.red,border:"none",color:"#fff",borderRadius:8,padding:"9px 22px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,letterSpacing:1}}>CANCEL</button>)}
+                SIMULATE {target.toLocaleString()}</button>
+              ):(<button onClick={()=>{cancelRef.current=true}} style={{background:C.red,border:"none",color:"#fff",borderRadius:8,padding:"9px 22px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,letterSpacing:1}}>CANCEL</button>)}
             </div>
-
             {running&&(<div style={{marginTop:8}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.textDim,marginBottom:3,fontFamily:"monospace"}}>
                 <span>{done.toLocaleString()} / {target.toLocaleString()}</span><span style={{color:C.accent}}>{pct}%</span>
               </div>
               <div style={{height:5,background:C.card,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${C.accent},${C.purple})`,borderRadius:3}}/></div>
             </div>)}
-
-            {live.error && <div style={{marginTop:8,fontSize:11,color:C.red}}>⚠ {live.error}</div>}
+            {live.error&&<div style={{marginTop:8,fontSize:11,color:C.red}}>⚠ {live.error}</div>}
           </div>
 
           {/* Results */}
@@ -222,10 +332,6 @@ export default function Home() {
                 <div style={{fontSize:9,color:C.textMuted}}>{champData[0]?.pct}%</div>
               </div>
               <div>
-                <div style={{fontSize:9,color:C.textMuted,fontWeight:700,letterSpacing:1}}>BEST POOL PICK ({poolSize}p)</div>
-                <div style={{fontSize:18,fontWeight:800,color:C.purple,fontFamily:"monospace"}}>{poolData[0]?.name||"—"}</div>
-              </div>
-              <div>
                 <div style={{fontSize:9,color:C.textMuted,fontWeight:700,letterSpacing:1}}>LOCKED</div>
                 <div style={{fontSize:22,fontWeight:800,color:C.green,fontFamily:"monospace"}}>{lockedCount}</div>
               </div>
@@ -233,7 +339,7 @@ export default function Home() {
 
             {/* Tabs */}
             <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-              {[{key:"live",label:"SCOREBOARD"},{key:"bracket",label:"BRACKET"},{key:"champion",label:"CHAMPIONS"},{key:"pool",label:"POOL OPTIMIZER"}].map(t=>
+              {[{key:"live",label:"SCOREBOARD"},{key:"bracket",label:"BRACKET"},{key:"upsets",label:"UPSET MAKERS"},{key:"champion",label:"CHAMPIONS"}].map(t=>
                 <Btn key={t.key} active={tab===t.key} onClick={()=>setTab(t.key)} color={C.blue}>{t.label}</Btn>
               )}
             </div>
@@ -276,7 +382,7 @@ export default function Home() {
                 })}
                 {live.liveGames.length===0&&(
                   <div style={{textAlign:"center",padding:"40px 20px",color:C.textMuted}}>
-                    <div style={{fontSize:14}}>No games loaded yet. Click <strong>GO LIVE</strong> or <strong>REFRESH</strong> to pull scores.</div>
+                    <div style={{fontSize:14}}>No games loaded. Click <strong>GO LIVE</strong> or <strong>REFRESH</strong> to pull scores.</div>
                   </div>
                 )}
               </div>
@@ -316,6 +422,119 @@ export default function Home() {
               </div>
             )}
 
+            {/* UPSET MAKERS TAB */}
+            {tab==="upsets"&&(
+              <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:18}}>
+                {/* Section 1: Round-by-round table */}
+                <h3 style={{fontSize:12,fontWeight:800,letterSpacing:1,color:C.accent,margin:"0 0 4px"}}>UPSET MAKERS — ROUND-BY-ROUND PROBABILITY</h3>
+                <p style={{fontSize:10,color:C.textMuted,margin:"0 0 14px"}}>
+                  Each column = % of {results.total.toLocaleString()} sims where this team pulled a 5+ seed-line upset in that round. "ANY" = at least one upset in any round.
+                </p>
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"monospace",fontSize:11}}>
+                    <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>
+                      {["#","TEAM","SEED","REGION","R64","R32","S16","E8","F4","NCG","ANY"].map(h=>(
+                        <th key={h} style={{padding:"7px 6px",textAlign:h==="#"?"center":"left",color:["R64","R32","S16","E8","F4","NCG"].includes(h)?C.accent:C.textMuted,fontWeight:700,fontSize:9,letterSpacing:1,borderRight:h==="REGION"||h==="NCG"?`1px solid ${C.border}`:"none"}}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {upsetTeamData.map((d,i)=>{
+                        const maxRP=Math.max(...ALL_ROUNDS.map(r=>parseFloat(d.roundPcts[r]||0)));
+                        return(
+                          <tr key={d.name} style={{borderBottom:`1px solid rgba(42,53,80,0.35)`,background:i%2===0?"transparent":"rgba(255,255,255,0.015)"}}>
+                            <td style={{padding:"5px 6px",color:C.textMuted,textAlign:"center",fontSize:10}}>{i+1}</td>
+                            <td style={{padding:"5px 6px",color:i<5?C.accent:C.text,fontWeight:i<5?700:400}}>{d.name}</td>
+                            <td style={{padding:"5px 6px",color:C.textDim}}>#{d.seed}</td>
+                            <td style={{padding:"5px 6px",color:C.textMuted,fontSize:9,borderRight:`1px solid ${C.border}`}}>{d.region}</td>
+                            {ALL_ROUNDS.map(r=>{
+                              const val=d.roundPcts[r];const nv=parseFloat(val||0);const intensity=maxRP>0?nv/maxRP:0;const isLast=r==="NCG";
+                              return(<td key={r} style={{padding:"5px 6px",borderRight:isLast?`1px solid ${C.border}`:"none"}}>
+                                {val?(<div style={{display:"flex",alignItems:"center",gap:4}}>
+                                  <div style={{width:`${Math.max(4,intensity*40)}px`,height:8,borderRadius:2,flexShrink:0,background:nv>=20?C.red:nv>=10?C.accent:nv>=3?C.blue:C.textMuted,opacity:Math.max(0.4,intensity)}}/>
+                                  <span style={{color:nv>=20?C.red:nv>=10?C.accent:nv>=3?C.text:C.textMuted,fontWeight:nv>=10?700:400,fontSize:10}}>{val}%</span>
+                                </div>):(<span style={{color:"rgba(100,116,139,0.3)",fontSize:9}}>—</span>)}
+                              </td>);
+                            })}
+                            <td style={{padding:"5px 6px"}}><span style={{color:C.green,fontWeight:700,fontSize:11}}>{d.simPct}%</span></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {upsetTeamData.length>0&&(
+                  <div style={{marginTop:14,padding:12,background:"rgba(239,68,68,0.08)",borderRadius:8,border:`1px solid rgba(239,68,68,0.2)`}}>
+                    <div style={{fontSize:11,color:C.red,fontWeight:700,marginBottom:4}}>HOW TO READ THIS</div>
+                    <div style={{fontSize:10,color:C.textDim,lineHeight:1.6}}>
+                      <strong style={{color:C.text}}>R64</strong> = "How often does this team beat their first-round opponent by 5+ seed lines?"
+                      {" "}<strong style={{color:C.text}}>R32, S16, E8</strong> = later-round upset rates (must survive earlier rounds first).
+                      {" "}<strong style={{color:C.text}}>ANY</strong> = at least one upset across all rounds.
+                      {" "}Only 5+ seed-line gaps qualify. "—" means no upset possible in that round.
+                    </div>
+                  </div>
+                )}
+
+                {/* Section 2: KenPom Mismatches */}
+                {mismatchGames.length>0&&(
+                  <div style={{marginTop:24}}>
+                    <h3 style={{fontSize:12,fontWeight:800,letterSpacing:1,color:C.red,margin:"0 0 4px"}}>KENPOM MISMATCHES — SEED SAYS FAVORITE, KENPOM SAYS UNDERDOG</h3>
+                    <p style={{fontSize:10,color:C.textMuted,margin:"0 0 12px"}}>Lower seed has HIGHER AdjEM in upcoming/current matchups. Auto-updates as rounds advance.</p>
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"monospace",fontSize:11}}>
+                        <thead><tr style={{borderBottom:`2px solid ${C.red}`}}>
+                          {["ROUND","REGION","MATCHUP","HI SEED EM","LO SEED EM","GAP","MODEL WIN%","VERDICT"].map(h=>(
+                            <th key={h} style={{padding:"8px 8px",textAlign:"left",color:C.textMuted,fontWeight:700,fontSize:9,letterSpacing:1}}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>{mismatchGames.sort((a,b)=>parseFloat(b.emGap)-parseFloat(a.emGap)).map(g=>{const sp=parseFloat(g.loWinPct);return(
+                          <tr key={`${g.region}-${g.round}-${g.hiSeed}-${g.loSeed}`} style={{borderBottom:`1px solid rgba(42,53,80,0.4)`,background:"rgba(239,68,68,0.04)"}}>
+                            <td style={{padding:"6px 8px",fontSize:10}}><span style={{background:"rgba(239,68,68,0.15)",color:C.red,padding:"2px 6px",borderRadius:3,fontWeight:700,fontSize:9}}>{g.round}</span></td>
+                            <td style={{padding:"6px 8px",color:C.textMuted,fontSize:10}}>{g.region}</td>
+                            <td style={{padding:"6px 8px"}}><span style={{color:C.textDim}}>#{g.hiSeed} {g.hiName}</span><span style={{color:C.textMuted,margin:"0 4px"}}>vs</span><span style={{color:C.accent,fontWeight:700}}>#{g.loSeed} {g.loName}</span></td>
+                            <td style={{padding:"6px 8px",color:C.textDim}}>+{g.hiEM}</td>
+                            <td style={{padding:"6px 8px",color:C.green,fontWeight:700}}>+{g.loEM}</td>
+                            <td style={{padding:"6px 8px",color:C.green,fontWeight:700}}>+{g.emGap}</td>
+                            <td style={{padding:"6px 8px",color:sp>=50?C.green:C.accent,fontWeight:700}}>{g.loWinPct}%</td>
+                            <td style={{padding:"6px 8px"}}><span style={{background:sp>=50?"rgba(34,197,94,0.15)":"rgba(249,115,22,0.15)",border:`1px solid ${sp>=50?"rgba(34,197,94,0.3)":"rgba(249,115,22,0.3)"}`,color:sp>=50?C.green:C.accent,padding:"2px 8px",borderRadius:4,fontSize:9,fontWeight:700}}>{sp>=50?"PICK THE UPSET":"LEAN UPSET"}</span></td>
+                          </tr>);})}</tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Section 3: Vulnerable Favorites */}
+                {closeGames.length>0&&(
+                  <div style={{marginTop:24}}>
+                    <h3 style={{fontSize:12,fontWeight:800,letterSpacing:1,color:C.accent,margin:"0 0 4px"}}>VULNERABLE FAVORITES — CLOSE GAMES (LOWER SEED WINS 35%+)</h3>
+                    <p style={{fontSize:10,color:C.textMuted,margin:"0 0 12px"}}>KenPom favors the higher seed, but the gap is slim. Good contrarian picks. Updates as rounds advance.</p>
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"monospace",fontSize:11}}>
+                        <thead><tr style={{borderBottom:`2px solid ${C.accent}`}}>
+                          {["ROUND","REGION","MATCHUP","HI SEED EM","LO SEED EM","GAP","LO SEED MODEL WIN%"].map(h=>(
+                            <th key={h} style={{padding:"8px 8px",textAlign:"left",color:C.textMuted,fontWeight:700,fontSize:9,letterSpacing:1}}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>{closeGames.map(g=>{const sp=parseFloat(g.loWinPct);return(
+                          <tr key={`${g.region}-${g.round}-${g.hiSeed}-${g.loSeed}`} style={{borderBottom:`1px solid rgba(42,53,80,0.4)`}}>
+                            <td style={{padding:"6px 8px",fontSize:10}}><span style={{background:"rgba(249,115,22,0.15)",color:C.accent,padding:"2px 6px",borderRadius:3,fontWeight:700,fontSize:9}}>{g.round}</span></td>
+                            <td style={{padding:"6px 8px",color:C.textMuted,fontSize:10}}>{g.region}</td>
+                            <td style={{padding:"6px 8px"}}><span style={{color:C.textDim}}>#{g.hiSeed} {g.hiName}</span><span style={{color:C.textMuted,margin:"0 4px"}}>vs</span><span style={{color:C.text,fontWeight:600}}>#{g.loSeed} {g.loName}</span></td>
+                            <td style={{padding:"6px 8px",color:C.green}}>+{g.hiEM}</td>
+                            <td style={{padding:"6px 8px",color:C.textDim}}>+{g.loEM}</td>
+                            <td style={{padding:"6px 8px",color:C.textMuted}}>{g.emGap}</td>
+                            <td style={{padding:"6px 8px"}}><div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <div style={{height:10,borderRadius:2,background:sp>=45?C.accent:C.blue,opacity:0.7,width:`${sp}%`,maxWidth:80,minWidth:4}}/>
+                              <span style={{color:sp>=45?C.accent:C.blue,fontWeight:sp>=45?700:400}}>{g.loWinPct}%</span>
+                            </div></td>
+                          </tr>);})}</tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* CHAMPIONS TAB */}
             {tab==="champion"&&(
               <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:18}}>
@@ -333,32 +552,6 @@ export default function Home() {
                 </div>
               </div>
             )}
-
-            {/* POOL OPTIMIZER TAB */}
-            {tab==="pool"&&(
-              <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:18}}>
-                <h3 style={{fontSize:12,fontWeight:800,letterSpacing:1,color:C.accent,margin:"0 0 14px"}}>POOL OPTIMIZER — {poolSize}-PERSON POOL</h3>
-                <div style={{overflowX:"auto"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"monospace",fontSize:11}}>
-                    <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
-                      {["#","TEAM","MODEL %","PUBLIC %","LEVERAGE","EV"].map(h=><th key={h} style={{padding:"8px",textAlign:"left",color:C.textMuted,fontSize:9,fontWeight:700}}>{h}</th>)}
-                    </tr></thead>
-                    <tbody>{poolData.map((d,i)=>{const lev=parseFloat(d.leverage);return(
-                      <tr key={d.name} style={{borderBottom:`1px solid rgba(42,53,80,0.5)`}}>
-                        <td style={{padding:"6px 8px",color:C.textMuted}}>{i+1}</td>
-                        <td style={{padding:"6px 8px",color:i<3?C.accent:C.text,fontWeight:i<3?700:400}}>{d.name}</td>
-                        <td style={{padding:"6px 8px",color:C.green}}>{d.pWin}%</td>
-                        <td style={{padding:"6px 8px",color:C.textDim}}>{d.pubPct}%</td>
-                        <td style={{padding:"6px 8px",color:lev>0?C.green:C.red,fontWeight:700}}>{lev>0?"+":""}{d.leverage}%</td>
-                        <td style={{padding:"6px 8px"}}><div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <div style={{height:10,borderRadius:2,background:C.purple,width:`${Math.min(100,parseFloat(d.ev)*2000)}%`,minWidth:3}}/>
-                          <span style={{color:C.purple,fontWeight:700}}>{d.ev}</span>
-                        </div></td>
-                      </tr>);})}</tbody>
-                  </table>
-                </div>
-              </div>
-            )}
           </>)}
 
           {/* Empty state */}
@@ -367,14 +560,12 @@ export default function Home() {
               <div style={{fontSize:48,marginBottom:10}}>🏀</div>
               <div style={{fontSize:15,fontWeight:600}}>Bracket Factory v8 — Live Tournament Tracking</div>
               <div style={{fontSize:12,marginTop:8,maxWidth:500,margin:"8px auto 0",lineHeight:1.6}}>
-                Click <strong>GO LIVE</strong> to start pulling ESPN scores in real time.
-                Completed games auto-lock into the bracket. Then hit <strong>SIMULATE</strong> to see updated championship odds.
+                Click <strong>GO LIVE</strong> to start pulling ESPN scores. Then hit <strong>SIMULATE</strong> to see championship odds. Completed games auto-lock into the bracket.
               </div>
             </div>
           )}
         </div>
       </div>
-
       <style jsx global>{`
         * { box-sizing: border-box; margin: 0; }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
