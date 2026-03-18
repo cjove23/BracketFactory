@@ -127,7 +127,7 @@ export default function Home() {
   const [target,setTarget]=useState(1000000);
   const [done,setDone]=useState(0);
   const [mode,setMode]=useState("kenpom");
-  const [upsetBias,setUpsetBias]=useState(0.2);
+  const [upsetBias,setUpsetBias]=useState(0.05);
   const [results,setResults]=useState(null);
   const [elapsed,setElapsed]=useState(0);
   const [tab,setTab]=useState("live");
@@ -302,9 +302,10 @@ export default function Home() {
               </select>
               <div style={{display:"flex",alignItems:"center",gap:6}} title="How much to shift win probability toward the underdog in Contrarian and Mix modes">
                 <span style={{fontSize:9,color:C.textMuted,fontWeight:700,whiteSpace:"nowrap"}}>UPSET BIAS</span>
-                <input type="range" min="0.05" max="0.5" step="0.05" value={upsetBias} onChange={e=>setUpsetBias(parseFloat(e.target.value))} disabled={running}
+                <input type="range" min="0.01" max="0.5" step="0.01" value={upsetBias} onChange={e=>setUpsetBias(parseFloat(e.target.value))} disabled={running}
                   style={{width:80,accentColor:C.red,cursor:running?"not-allowed":"pointer"}}/>
-                <span style={{fontSize:10,color:C.red,fontWeight:700,fontFamily:"monospace",minWidth:28}}>{upsetBias.toFixed(2)}</span>
+                <span style={{fontSize:10,color:C.red,fontWeight:700,fontFamily:"monospace",minWidth:28}}>{Math.round(upsetBias*100)}%</span>
+                <span style={{fontSize:8,color:C.textMuted,whiteSpace:"nowrap"}}>(default 5%)</span>
               </div>
               <div style={{flex:1}}/>
               {!running?(<button onClick={generate} style={{background:`linear-gradient(135deg,${C.accent},${C.accentDim})`,border:"none",color:"#fff",borderRadius:8,padding:"9px 22px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,letterSpacing:1}}>
@@ -399,7 +400,7 @@ export default function Home() {
               <div style={{display:"flex",flexDirection:"column",gap:16}}>
                 {REGION_NAMES.map(rName=>{
                   const teams=bracketData[rName];if(!teams)return null;
-                  const roundCols=[{label:"WIN R64",idx:1},{label:"S16",idx:2},{label:"E8",idx:3},{label:"F4",idx:4},{label:"CHAMP",idx:6}];
+                  const roundCols=[{label:"R64",idx:1},{label:"R32",idx:2},{label:"S16",idx:3},{label:"E8",idx:4},{label:"F4",idx:5},{label:"CHAMP",idx:6}];
                   return(
                     <div key={rName} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
                       <h3 style={{fontSize:13,fontWeight:800,letterSpacing:1,color:C.accent,margin:"0 0 12px"}}>{rName.toUpperCase()} REGION</h3>
@@ -411,7 +412,7 @@ export default function Home() {
                           </tr></thead>
                           <tbody>{Array.from({length:8}).map((_,pi)=>[teams[pi*2],teams[pi*2+1]].map((t,ti)=>(
                             <tr key={`${pi}-${ti}`} style={{borderBottom:ti===1?`2px solid rgba(42,53,80,0.6)`:`1px solid rgba(42,53,80,0.25)`}}>
-                              <td style={{padding:"4px 6px"}}><span style={{color:C.textMuted,marginRight:4}}>{t.seed}</span><span style={{color:t.advPcts[1]>50?C.text:C.textDim,fontWeight:t.advPcts[4]>5?700:400}}>{t.name}</span></td>
+                              <td style={{padding:"4px 6px"}}><span style={{color:C.textMuted,marginRight:4}}>{t.seed}</span><span style={{color:t.advPcts[1]>50?C.text:C.textDim,fontWeight:t.advPcts[5]>5?700:400}}>{t.name}</span></td>
                               {roundCols.map(rc=>{const p=t.advPcts[rc.idx];const col=p>=70?C.green:p>=40?C.blue:p>=15?C.accent:p>=3?C.textDim:"rgba(100,116,139,0.3)";return(
                                 <td key={rc.label} style={{padding:"4px"}}><div style={{display:"flex",alignItems:"center",gap:4}}>
                                   <div style={{height:8,borderRadius:2,background:col,width:`${Math.min(p,100)*0.7}px`,minWidth:p>0.1?2:0,opacity:p<1?0.4:0.8,flexShrink:0}}/>
