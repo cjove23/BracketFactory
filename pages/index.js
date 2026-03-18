@@ -227,7 +227,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Bracket Factory v8 — Live</title>
+        <title>Bracket Factory</title>
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet"/>
       </Head>
       <div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'Outfit',sans-serif"}}>
@@ -236,7 +236,7 @@ export default function Home() {
           {/* Header */}
           <div style={{textAlign:"center",marginBottom:20}}>
             <h1 style={{fontSize:32,fontWeight:900,letterSpacing:-1,margin:0,background:`linear-gradient(135deg,${C.accent},${C.red})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
-              BRACKET FACTORY v8 — LIVE
+              BRACKET FACTORY
             </h1>
             <p style={{color:C.textMuted,fontSize:12,margin:"6px 0 0"}}>
               KenPom-calibrated · Live scores via ESPN · {lockedCount} games locked
@@ -300,6 +300,14 @@ export default function Home() {
                 style={{background:C.card,border:`1px solid ${C.border}`,color:C.text,borderRadius:6,padding:"5px 8px",fontFamily:"monospace",fontSize:11}}>
                 {[10000,100000,500000,1000000].map(n=><option key={n} value={n}>{n.toLocaleString()}</option>)}
               </select>
+              {(mode==="contrarian"||mode==="mixed")&&(
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:9,color:C.textMuted,fontWeight:700,whiteSpace:"nowrap"}}>UPSET BIAS</span>
+                  <input type="range" min="0.05" max="0.5" step="0.05" value={upsetBias} onChange={e=>setUpsetBias(parseFloat(e.target.value))} disabled={running}
+                    style={{width:80,accentColor:C.red,cursor:running?"not-allowed":"pointer"}}/>
+                  <span style={{fontSize:10,color:C.red,fontWeight:700,fontFamily:"monospace",minWidth:28}}>{upsetBias.toFixed(2)}</span>
+                </div>
+              )}
               <div style={{flex:1}}/>
               {!running?(<button onClick={generate} style={{background:`linear-gradient(135deg,${C.accent},${C.accentDim})`,border:"none",color:"#fff",borderRadius:8,padding:"9px 22px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:800,fontSize:13,letterSpacing:1}}>
                 SIMULATE {target.toLocaleString()}</button>
@@ -309,7 +317,7 @@ export default function Home() {
               <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.textDim,marginBottom:3,fontFamily:"monospace"}}>
                 <span>{done.toLocaleString()} / {target.toLocaleString()}</span><span style={{color:C.accent}}>{pct}%</span>
               </div>
-              <div style={{height:5,background:C.card,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${C.accent},${C.purple})`,borderRadius:3}}/></div>
+              <div style={{height:5,background:C.card,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${C.accent},${C.purple},${C.accent})`,backgroundSize:"200% 100%",borderRadius:3,transition:"width 0.3s ease-out",animation:"shimmer 1.5s ease-in-out infinite"}}/></div>
             </div>)}
             {live.error&&<div style={{marginTop:8,fontSize:11,color:C.red}}>⚠ {live.error}</div>}
           </div>
@@ -558,7 +566,7 @@ export default function Home() {
           {!results&&!running&&(
             <div style={{textAlign:"center",padding:"50px 20px",color:C.textMuted}}>
               <div style={{fontSize:48,marginBottom:10}}>🏀</div>
-              <div style={{fontSize:15,fontWeight:600}}>Bracket Factory v8 — Live Tournament Tracking</div>
+              <div style={{fontSize:15,fontWeight:600}}>Bracket Factory — Live Tournament Tracking</div>
               <div style={{fontSize:12,marginTop:8,maxWidth:500,margin:"8px auto 0",lineHeight:1.6}}>
                 Click <strong>GO LIVE</strong> to start pulling ESPN scores. Then hit <strong>SIMULATE</strong> to see championship odds. Completed games auto-lock into the bracket.
               </div>
@@ -569,6 +577,7 @@ export default function Home() {
       <style jsx global>{`
         * { box-sizing: border-box; margin: 0; }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
       `}</style>
     </>
   );
