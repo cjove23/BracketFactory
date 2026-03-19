@@ -523,8 +523,8 @@ export default function Home() {
 
           {/* Tabs — always visible */}
           <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-            {[{key:"live",label:"SCOREBOARD"},{key:"bracket",label:"BRACKET"},{key:"upsets",label:"UPSET MAKERS"},{key:"betting",label:"BETTING"},{key:"champion",label:"CHAMPIONS"}].map(t=>
-              <Btn key={t.key} active={tab===t.key} onClick={()=>setTab(t.key)} color={t.key==="betting"?C.yellow:C.blue}>{t.label}</Btn>
+            {[{key:"live",label:"SCOREBOARD"},{key:"bracket",label:"BRACKET"},{key:"upsets",label:"UPSET MAKERS"},{key:"betting",label:"BETTING"},{key:"record",label:"RECORD"+(picksRecord.length>0?` (${recordW}-${recordL})`:"")},{key:"champion",label:"CHAMPIONS"}].map(t=>
+              <Btn key={t.key} active={tab===t.key} onClick={()=>setTab(t.key)} color={t.key==="betting"?C.yellow:t.key==="record"?C.green:C.blue}>{t.label}</Btn>
             )}
           </div>
 
@@ -797,75 +797,80 @@ export default function Home() {
                 ):(<div style={{textAlign:"center",padding:"30px 20px",color:C.textMuted}}><div style={{fontSize:13}}>{bettingFilter!=="ALL"?`No ${bettingFilter} games.`:"No upcoming matchups."}</div></div>);
               })()}
 
-              {/* Picks Archive */}
-              {picksRecord.length>0&&(
-                <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                    <h3 style={{fontSize:12,fontWeight:800,letterSpacing:1,color:C.green,margin:0}}>📊 PICKS RECORD</h3>
-                    <div style={{display:"flex",alignItems:"center",gap:12}}>
-                      <span style={{fontFamily:"monospace",fontSize:14,fontWeight:800}}>
-                        <span style={{color:C.green}}>{recordW}W</span>
-                        <span style={{color:C.textMuted}}> - </span>
-                        <span style={{color:C.red}}>{recordL}L</span>
-                        {recordP>0&&<><span style={{color:C.textMuted}}> - </span><span style={{color:C.textDim}}>{recordP}P</span></>}
-                      </span>
-                      {(recordW+recordL)>0&&(
-                        <span style={{fontFamily:"monospace",fontSize:11,color:recordW>recordL?C.green:recordW<recordL?C.red:C.textMuted,fontWeight:700}}>
-                          {((recordW/(recordW+recordL))*100).toFixed(0)}%
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div style={{overflowX:"auto"}}>
-                    <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"monospace",fontSize:10}}>
-                      <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>
-                        {["RESULT","MATCHUP","PICK","TYPE","LINE","EDGE","RATING","SCORE"].map(h=>(
-                          <th key={h} style={{padding:"6px 8px",textAlign:"left",color:C.textMuted,fontWeight:700,fontSize:9}}>{h}</th>
-                        ))}
-                      </tr></thead>
-                      <tbody>{picksRecord.map(p=>{
-                        const resultColor=p.result==="W"?C.green:p.result==="L"?C.red:C.textDim;
-                        const ratingColor=p.rating==="SHARP"?C.yellow:p.rating==="+EV"?C.green:p.rating==="STRONG VALUE"?C.green:p.rating==="VALUE"?C.blue:C.accent;
-                        const teamSpread=p.valueTeam===p.hiName?p.marketSpread:-p.marketSpread;
-                        return(
-                          <tr key={p.gameId} style={{borderBottom:`1px solid rgba(42,53,80,0.3)`}}>
-                            <td style={{padding:"5px 8px"}}>
-                              <span style={{background:`${resultColor}22`,border:`1px solid ${resultColor}44`,color:resultColor,padding:"2px 8px",borderRadius:3,fontWeight:800,fontSize:10}}>{p.result}</span>
-                            </td>
-                            <td style={{padding:"5px 8px",fontSize:10}}>
-                              <span style={{color:C.textDim}}>#{p.hiSeed}</span> <span style={{color:C.text}}>{p.hiName}</span>
-                              <span style={{color:C.textMuted,margin:"0 3px"}}>vs</span>
-                              <span style={{color:C.textDim}}>#{p.loSeed}</span> <span style={{color:C.text}}>{p.loName}</span>
-                            </td>
-                            <td style={{padding:"5px 8px",color:C.accent,fontWeight:700}}>{p.valueTeam}</td>
-                            <td style={{padding:"5px 8px",color:C.textDim}}>{p.bestType==="ML"?"ML":"Spread"}</td>
-                            <td style={{padding:"5px 8px",color:C.text,fontWeight:600}}>
-                              {p.bestType==="ML"?((p.bestLine>0?"+":"")+p.bestLine):((teamSpread>0?"+":"")+teamSpread.toFixed(1))}
-                            </td>
-                            <td style={{padding:"5px 8px",color:C.yellow,fontWeight:700}}>+{p.bestEdge.toFixed(1)}%</td>
-                            <td style={{padding:"5px 8px"}}><span style={{color:ratingColor,fontSize:9,fontWeight:700}}>{p.rating}</span></td>
-                            <td style={{padding:"5px 8px",color:C.textDim}}>{p.hiScore}-{p.loScore}</td>
-                          </tr>
-                        );
-                      })}</tbody>
-                    </table>
-                  </div>
-
-                  {(recordW+recordL)>=3&&(
-                    <div style={{marginTop:10,fontSize:9,color:C.textMuted,lineHeight:1.5}}>
-                      Record based on model's best value pick for each game with available odds. Spread picks graded on cover. ML picks graded on outright win. Only picks with 2%+ edge tracked.
-                    </div>
-                  )}
-                </div>
-              )}
-
               <div style={{marginTop:16,padding:12,background:"rgba(234,179,8,0.06)",borderRadius:8,border:"1px solid rgba(234,179,8,0.15)"}}>
                 <div style={{fontSize:10,color:C.yellow,fontWeight:700,marginBottom:4}}>DISCLAIMER</div>
                 <div style={{fontSize:9,color:C.textMuted,lineHeight:1.6}}>
                   Statistical model, not financial advice. Edge = model probability minus market implied probability. Spread edge = difference in projected points. Does not account for public action or game-day factors.
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* RECORD TAB */}
+          {tab==="record"&&(
+            <div style={{background:C.surface,border:`1px solid rgba(34,197,94,0.25)`,borderRadius:12,padding:18}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                <h3 style={{fontSize:12,fontWeight:800,letterSpacing:1,color:C.green,margin:0}}>📊 PICKS RECORD</h3>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <span style={{fontFamily:"monospace",fontSize:18,fontWeight:800}}>
+                    <span style={{color:C.green}}>{recordW}W</span>
+                    <span style={{color:C.textMuted}}> - </span>
+                    <span style={{color:C.red}}>{recordL}L</span>
+                    {recordP>0&&<><span style={{color:C.textMuted}}> - </span><span style={{color:C.textDim}}>{recordP}P</span></>}
+                  </span>
+                  {(recordW+recordL)>0&&(
+                    <span style={{fontFamily:"monospace",fontSize:14,color:recordW>recordL?C.green:recordW<recordL?C.red:C.textMuted,fontWeight:800}}>
+                      {((recordW/(recordW+recordL))*100).toFixed(0)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <p style={{fontSize:10,color:C.textMuted,margin:"0 0 14px"}}>
+                Every completed tournament game graded against the model's best value pick. Spread picks graded on cover. ML picks graded on outright win. Only picks with 2%+ vig-adjusted edge are tracked.
+              </p>
+
+              {picksRecord.length>0?(
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"monospace",fontSize:10}}>
+                    <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>
+                      {["RESULT","MATCHUP","PICK","TYPE","LINE","EDGE","RATING","SCORE"].map(h=>(
+                        <th key={h} style={{padding:"6px 8px",textAlign:"left",color:C.textMuted,fontWeight:700,fontSize:9}}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>{picksRecord.map(p=>{
+                      const resultColor=p.result==="W"?C.green:p.result==="L"?C.red:C.textDim;
+                      const ratingColor=p.rating==="SHARP"?C.yellow:p.rating==="+EV"?C.green:p.rating==="STRONG VALUE"?C.green:p.rating==="VALUE"?C.blue:C.accent;
+                      const teamSpread=p.valueTeam===p.hiName?p.marketSpread:-p.marketSpread;
+                      return(
+                        <tr key={p.gameId} style={{borderBottom:`1px solid rgba(42,53,80,0.3)`}}>
+                          <td style={{padding:"5px 8px"}}>
+                            <span style={{background:`${resultColor}22`,border:`1px solid ${resultColor}44`,color:resultColor,padding:"2px 8px",borderRadius:3,fontWeight:800,fontSize:10}}>{p.result}</span>
+                          </td>
+                          <td style={{padding:"5px 8px",fontSize:10}}>
+                            <span style={{color:C.textDim}}>#{p.hiSeed}</span> <span style={{color:C.text}}>{p.hiName}</span>
+                            <span style={{color:C.textMuted,margin:"0 3px"}}>vs</span>
+                            <span style={{color:C.textDim}}>#{p.loSeed}</span> <span style={{color:C.text}}>{p.loName}</span>
+                          </td>
+                          <td style={{padding:"5px 8px",color:C.accent,fontWeight:700}}>{p.valueTeam}</td>
+                          <td style={{padding:"5px 8px",color:C.textDim}}>{p.bestType==="ML"?"ML":"Spread"}</td>
+                          <td style={{padding:"5px 8px",color:C.text,fontWeight:600}}>
+                            {p.bestType==="ML"?((p.bestLine>0?"+":"")+p.bestLine):((teamSpread>0?"+":"")+teamSpread.toFixed(1))}
+                          </td>
+                          <td style={{padding:"5px 8px",color:C.yellow,fontWeight:700}}>+{p.bestEdge.toFixed(1)}%</td>
+                          <td style={{padding:"5px 8px"}}><span style={{color:ratingColor,fontSize:9,fontWeight:700}}>{p.rating}</span></td>
+                          <td style={{padding:"5px 8px",color:C.textDim}}>{p.hiScore}-{p.loScore}</td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                </div>
+              ):(
+                <div style={{textAlign:"center",padding:"40px 20px",color:C.textMuted}}>
+                  <div style={{fontSize:14}}>No completed games with betting data yet.</div>
+                  <div style={{fontSize:11,marginTop:6}}>Picks will appear here as tournament games go final. The model retroactively grades every completed game against its best value pick.</div>
+                </div>
+              )}
             </div>
           )}
 
