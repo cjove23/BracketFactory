@@ -436,7 +436,7 @@ export default function Home() {
             // ML lost — check if spread was close in edge% and covered
             const valueIsHi=valueTeam===hiName;
             const spreadEdgeForValue=valueIsHi?hiSpreadEdgePct:loSpreadEdgePct;
-            const CLOSE_THRESHOLD=2.0; // within 2% edge counts as "close"
+            const CLOSE_THRESHOLD=3.0; // within 3% edge counts as "close"
             if(spreadEdgeForValue!=null&&spreadEdgeForValue>0&&(bestEdge-spreadEdgeForValue)<=CLOSE_THRESHOLD&&marketSpread!=null){
               const teamSpread=valueIsHi?marketSpread:-marketSpread;
               const teamMargin=valueIsHi?actualMargin:-actualMargin;
