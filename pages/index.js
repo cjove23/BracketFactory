@@ -428,15 +428,39 @@ export default function Home() {
 
         let result=null;
         if(bestType==="ML"){
-          // ML pick: did the value team win outright?
-          result=(espnGame.winner===valueTeam)?"W":"L";
+          const mlWon=(espnGame.winner===valueTeam);
+          if(mlWon){
+            // ML wins → always show ML
+            result="W";
+          } else {
+            // ML lost — check if spread was close in edge% and covered
+            const valueIsHi=valueTeam===hiName;
+            const spreadEdgeForValue=valueIsHi?hiSpreadEdgePct:loSpreadEdgePct;
+            const CLOSE_THRESHOLD=2.0; // within 2% edge counts as "close"
+            if(spreadEdgeForValue!=null&&spreadEdgeForValue>0&&(bestEdge-spreadEdgeForValue)<=CLOSE_THRESHOLD&&marketSpread!=null){
+              const teamSpread=valueIsHi?marketSpread:-marketSpread;
+              const teamMargin=valueIsHi?actualMargin:-actualMargin;
+              if(teamMargin+teamSpread>0){
+                // Spread covered — swap to spread pick
+                bestType="spread";bestLine=marketSpread;bestEdge=spreadEdgeForValue;
+                result="W";
+              } else if(teamMargin+teamSpread===0){
+                bestType="spread";bestLine=marketSpread;bestEdge=spreadEdgeForValue;
+                result="P";
+              } else {
+                result="L"; // both ML and spread lost
+              }
+            } else {
+              result="L";
+            }
+          }
         } else {
           // Spread pick: did the value team cover?
           const valueIsHi=valueTeam===hiName;
-          const teamSpread=valueIsHi?marketSpread:-marketSpread; // from value team's perspective
+          const teamSpread=valueIsHi?marketSpread:-marketSpread;
           const teamMargin=valueIsHi?actualMargin:-actualMargin;
           if(teamMargin+teamSpread>0) result="W";
-          else if(teamMargin+teamSpread===0) result="P"; // push
+          else if(teamMargin+teamSpread===0) result="P";
           else result="L";
         }
 
