@@ -597,7 +597,7 @@ export default function Home() {
           {/* SCOREBOARD TAB */}
           {tab==="live"&&(
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              {["final","live","scheduled"].map(status=>{
+              {["live","scheduled","final"].map(status=>{
                 const games=live.liveGames.filter(g=>g.status===status);
                 if(!games.length)return null;
                 const label={final:"FINAL",live:"IN PROGRESS",scheduled:"UPCOMING"}[status];
