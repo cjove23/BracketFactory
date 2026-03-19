@@ -355,7 +355,7 @@ export default function Home() {
         ];
         for(const e of edges){if(e.edge!=null&&e.edge>bestEdge){bestEdge=e.edge;valueTeam=e.team;bestType=e.type;bestLine=e.line;}}
 
-        if(!valueTeam||bestEdge<2)continue; // Only track picks we'd actually flag
+        if(!valueTeam||bestEdge<=0)continue; // Track all picks with any edge
 
         // Grade the pick
         const hiScore=hiIsHome?espnGame.home.score:espnGame.away.score;
@@ -749,7 +749,7 @@ export default function Home() {
                               <span style={{fontSize:9,color:C.textMuted}}>{g.region}</span>
                             </div>
                             <span style={{background:`${rc}22`,border:`1px solid ${rc}44`,color:rc,padding:"3px 10px",borderRadius:4,fontSize:9,fontWeight:800}}>
-                              {g.rating}{g.valueTeam&&g.rating!=="FAIR"&&g.rating!=="THIN EDGE"&&g.rating!=="NO LINE"?` — ${g.valueTeam} (${g.bestType==="ML"?"Moneyline":"Spread"})`:""}
+                              {g.rating}{g.valueTeam&&g.rating!=="FAIR"&&g.rating!=="NO LINE"?` — ${g.valueTeam} (${g.bestType==="ML"?"Moneyline":"Spread"})`:""}
                             </span>
                           </div>
                           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,fontSize:10,fontFamily:"monospace"}}>
@@ -827,7 +827,7 @@ export default function Home() {
               </div>
 
               <p style={{fontSize:10,color:C.textMuted,margin:"0 0 14px"}}>
-                Every completed tournament game graded against the model's best value pick. Spread picks graded on cover. ML picks graded on outright win. Only picks with 2%+ vig-adjusted edge are tracked.
+                Every completed tournament game graded against the model's best value pick. Spread picks graded on cover. ML picks graded on outright win. All rated picks (Sharp, Strong Value, Value, +EV, Thin Edge) are tracked.
               </p>
 
               {picksRecord.length>0?(
