@@ -257,13 +257,19 @@ export default function Home() {
       const loSpreadEdgePct=spreadEdgePct!=null?-spreadEdgePct:null;
       const maxEdge=Math.max(Math.abs(hiMLEdge||0),Math.abs(loMLEdge||0),Math.abs(spreadEdgePct||0));
       const absSpread=marketSpread!=null?Math.abs(marketSpread):999;
+      // Vig-adjusted ML edge (subtract ~2.3% standard vig from each side)
+      const vigAdj=2.3;
+      const hiMLEdgeAdj=hiMLEdge!=null?hiMLEdge-vigAdj:null;
+      const loMLEdgeAdj=loMLEdge!=null?loMLEdge-vigAdj:null;
+      const maxEdgeAdj=Math.max(hiMLEdgeAdj||0,loMLEdgeAdj||0,Math.abs(spreadEdgePct||0));
       let rating="NO LINE";
       if(odds){
-        // Sweet spot: spread under 10, model most reliable, vig is standard
-        if(absSpread<=10&&maxEdge>=3) rating="SHARP";
-        else if(maxEdge>=10) rating="STRONG VALUE";
-        else if(maxEdge>=5) rating="VALUE";
-        else if(maxEdge>=3) rating="+EV";
+        // SHARP: sweet spot (spread<10) with real edge after vig
+        // Requires spread edge ≥3% OR vig-adjusted ML edge ≥3%
+        if(absSpread<=10&&maxEdgeAdj>=3) rating="SHARP";
+        else if(maxEdgeAdj>=8) rating="STRONG VALUE";
+        else if(maxEdgeAdj>=4) rating="VALUE";
+        else if(maxEdgeAdj>=1.5) rating="+EV";
         else if(maxEdge>=2) rating="THIN EDGE";
         else rating="FAIR";
       }
@@ -372,11 +378,15 @@ export default function Home() {
 
         const absSpread=marketSpread!=null?Math.abs(marketSpread):999;
         let rating="";
+        const vigAdj=2.3;
+        const hiMLEdgeAdj=hiMLEdge!=null?hiMLEdge-vigAdj:null;
+        const loMLEdgeAdj=loMLEdge!=null?loMLEdge-vigAdj:null;
+        const maxEdgeAdj=Math.max(hiMLEdgeAdj||0,loMLEdgeAdj||0,Math.abs(spreadEdgePct||0));
         const maxEdge=Math.max(Math.abs(hiMLEdge||0),Math.abs(loMLEdge||0),Math.abs(spreadEdgePct||0));
-        if(absSpread<=10&&maxEdge>=3)rating="SHARP";
-        else if(maxEdge>=10)rating="STRONG VALUE";
-        else if(maxEdge>=5)rating="VALUE";
-        else if(maxEdge>=3)rating="+EV";
+        if(absSpread<=10&&maxEdgeAdj>=3)rating="SHARP";
+        else if(maxEdgeAdj>=8)rating="STRONG VALUE";
+        else if(maxEdgeAdj>=4)rating="VALUE";
+        else if(maxEdgeAdj>=1.5)rating="+EV";
         else rating="THIN EDGE";
 
         picks.push({
@@ -682,7 +692,7 @@ export default function Home() {
                 <button onClick={live.fetchScores} style={{background:C.yellow,border:"none",color:"#000",borderRadius:6,padding:"5px 14px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:10}}>↻ REFRESH LINES</button>
               </div>
               <p style={{fontSize:10,color:C.textMuted,margin:"4px 0 10px"}}>
-                Model vs market edge. <span style={{color:C.yellow}}>SHARP</span> = sweet spot (spread {"<"}10, 3%+ edge, model most reliable). <span style={{color:C.green}}>+EV</span> = clears vig. <span style={{color:C.accent}}>THIN EDGE</span> = marginal after ~2.3% vig.
+                Model vs market edge, vig-adjusted (~2.3% standard juice removed). <span style={{color:C.yellow}}>SHARP</span> = sweet spot (spread {"<"}10, 3%+ real edge). <span style={{color:C.green}}>+EV</span> = clears vig. <span style={{color:C.accent}}>THIN EDGE</span> = may just be vig noise.
                 {live.lastUpdate&&<span style={{color:C.textDim,marginLeft:6}}>Updated: {new Date(live.lastUpdate).toLocaleTimeString()}</span>}
               </p>
 
