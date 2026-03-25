@@ -6,11 +6,11 @@ import { KNOWN_ODDS } from "../../lib/bracket";
 
 let redis = null;
 try {
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
     const { Redis } = require("@upstash/redis");
     redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      url: process.env.KV_REST_API_URL,
+      token: process.env.KV_REST_API_TOKEN,
     });
   }
 } catch (e) { /* Redis not available, fall back to KNOWN_ODDS only */ }
