@@ -269,27 +269,32 @@ export default function Home() {
         }
         if(espnOdds.spread!=null&&!hiIsHome)marketSpread=-marketSpread;
       }
-      // Spread edge: convert market spread to implied win probability, compare to model
+      // Spread edge: actual cover probability vs implied -110 cover probability
       let spreadEdgePts=marketSpread!=null?marketSpread-mSpread:null;
-      let spreadEdgePct=null;
+      let hiSpreadEdgePct=null,loSpreadEdgePct=null;
       if(marketSpread!=null){
         const sd=gameSD(hiTeam.oRk,hiTeam.dRk,loTeam.oRk,loTeam.dRk);
-        const marketHiWinP=normalCDF(-marketSpread/sd); // market implied prob for hi seed
-        spreadEdgePct=(hiWinP-marketHiWinP)*100; // positive = model likes hi seed more
+        // Model expected margin from hi seed perspective (positive = hi seed wins by this many)
+        const modelMargin=-mSpread;
+        // Market line: hi seed must win by more than this to cover
+        const marketLine=-marketSpread;
+        // P(hi covers) = P(margin > marketLine)
+        const hiCoverProb=normalCDF((modelMargin-marketLine)/sd);
+        const loCoverProb=1-hiCoverProb;
+        const impliedCover=110/210; // -110 vig implies ~52.38% cover rate
+        hiSpreadEdgePct=(hiCoverProb-impliedCover)*100;
+        loSpreadEdgePct=(loCoverProb-impliedCover)*100;
       }
+      const bestSpreadEdge=Math.max(hiSpreadEdgePct||0,loSpreadEdgePct||0);
       let hiMLEdge=null,loMLEdge=null,hiKelly=null,loKelly=null;
       if(hiML){const ip=oddsToProb(hiML);hiMLEdge=ip!=null?((hiWinP-ip)*100):null;const d=americanToDecimal(hiML);hiKelly=d?kellyCriterion(hiWinP,d):null;}
       if(loML){const ip=oddsToProb(loML);loMLEdge=ip!=null?((loWinP-ip)*100):null;const d=americanToDecimal(loML);loKelly=d?kellyCriterion(loWinP,d):null;}
-      // All edges now in % — pick the best
-      const hiSpreadEdgePct=spreadEdgePct!=null?spreadEdgePct:null;
-      const loSpreadEdgePct=spreadEdgePct!=null?-spreadEdgePct:null;
-      const maxEdge=Math.max(Math.abs(hiMLEdge||0),Math.abs(loMLEdge||0),Math.abs(spreadEdgePct||0));
+      const maxEdge=Math.max(Math.abs(hiMLEdge||0),Math.abs(loMLEdge||0),bestSpreadEdge);
       const absSpread=marketSpread!=null?Math.abs(marketSpread):999;
-      // Vig-adjusted ML edge (subtract ~2.3% standard vig from each side)
       const vigAdj=2.3;
       const hiMLEdgeAdj=hiMLEdge!=null?hiMLEdge-vigAdj:null;
       const loMLEdgeAdj=loMLEdge!=null?loMLEdge-vigAdj:null;
-      const maxEdgeAdj=Math.max(hiMLEdgeAdj||0,loMLEdgeAdj||0,Math.abs(spreadEdgePct||0));
+      const maxEdgeAdj=Math.max(hiMLEdgeAdj||0,loMLEdgeAdj||0,bestSpreadEdge);
       let rating="NO LINE";
       if(hasAnyOdds){
         if(absSpread<=10&&maxEdgeAdj>=3) rating="SHARP";
@@ -298,8 +303,7 @@ export default function Home() {
         else if(maxEdgeAdj>=1.5) rating="+EV";
         else rating="FAIR";
       }
-      // Determine value team from best available edge (all in %)
-      // SPREAD CAP: Don't pick spreads over ±15 — model unreliable at extremes
+      // Determine value team from best available edge (all in cover %)
       const SPREAD_CAP=15;
       const spreadCapped=marketSpread!=null&&Math.abs(marketSpread)>SPREAD_CAP;
       let valueTeam=null,valueSide=null,bestEdge=0,bestKelly=null,bestType=null,bestLine=null;
@@ -312,7 +316,7 @@ export default function Home() {
         ]:[]),
       ];
       for(const e of edges){if(e.edge!=null&&e.edge>bestEdge){bestEdge=e.edge;valueTeam=e.team;valueSide=e.side;bestKelly=e.kelly;bestType=e.type;bestLine=e.line;}}
-      return{key:`${m.region}-${m.round}-${m.hiSeed}-${m.loSeed}`,round:m.round,region:m.region,hiSeed:m.hiSeed,loSeed:m.loSeed,hiName:m.hiName,loName:m.loName,modelSpread:mSpread,hiWinP,loWinP,marketSpread,hiML,loML,overUnder,spreadEdgePts,spreadEdgePct,hiMLEdge,loMLEdge,hiKelly,loKelly,rating,hasOdds:hasAnyOdds,valueTeam,bestEdge,bestKelly,bestType,bestLine,espnStatus:espnGame?.status||null};
+      return{key:`${m.region}-${m.round}-${m.hiSeed}-${m.loSeed}`,round:m.round,region:m.region,hiSeed:m.hiSeed,loSeed:m.loSeed,hiName:m.hiName,loName:m.loName,modelSpread:mSpread,hiWinP,loWinP,marketSpread,hiML,loML,overUnder,spreadEdgePts,hiSpreadEdgePct,loSpreadEdgePct,hiMLEdge,loMLEdge,hiKelly,loKelly,rating,hasOdds:hasAnyOdds,valueTeam,bestEdge,bestKelly,bestType,bestLine,espnStatus:espnGame?.status||null};
     }).filter(Boolean);
   },[currentMatchups,live.liveGames,injuryMap,live.cachedOdds]);
 
@@ -398,12 +402,17 @@ export default function Home() {
           if(marketSpread!=null&&espnOdds.spread!=null&&!espnHiIsHome)marketSpread=-marketSpread;
         }
 
-        // Compute edges
-        let spreadEdgePct=null;
+        // Compute edges — spread uses cover probability, ML uses win probability
+        let hiSpreadEdgePct=null,loSpreadEdgePct=null;
         if(marketSpread!=null){
           const sd=gameSD(hiTeam.oRk,hiTeam.dRk,loTeam.oRk,loTeam.dRk);
-          const marketHiWinP=normalCDF(-marketSpread/sd);
-          spreadEdgePct=(hiWinP-marketHiWinP)*100;
+          const modelMargin=-mSpread;
+          const marketLine=-marketSpread;
+          const hiCoverProb=normalCDF((modelMargin-marketLine)/sd);
+          const loCoverProb=1-hiCoverProb;
+          const impliedCover=110/210;
+          hiSpreadEdgePct=(hiCoverProb-impliedCover)*100;
+          loSpreadEdgePct=(loCoverProb-impliedCover)*100;
         }
         let hiMLEdge=null,loMLEdge=null;
         if(hiML){const ip=oddsToProb(hiML);hiMLEdge=ip!=null?((hiWinP-ip)*100):null;}
@@ -412,8 +421,6 @@ export default function Home() {
         // Find best edge — cap spread picks at ±15
         const SPREAD_CAP=15;
         const spreadCapped=marketSpread!=null&&Math.abs(marketSpread)>SPREAD_CAP;
-        const hiSpreadEdgePct=spreadEdgePct!=null?spreadEdgePct:null;
-        const loSpreadEdgePct=spreadEdgePct!=null?-spreadEdgePct:null;
         let bestEdge=0,valueTeam=null,bestType=null,bestLine=null;
         const edges=[
           {team:hiName,edge:hiMLEdge,type:"ML",line:hiML},
@@ -471,7 +478,7 @@ export default function Home() {
         const vigAdj=2.3;
         const hiMLEdgeAdj=hiMLEdge!=null?hiMLEdge-vigAdj:null;
         const loMLEdgeAdj=loMLEdge!=null?loMLEdge-vigAdj:null;
-        const maxEdgeAdj=Math.max(hiMLEdgeAdj||0,loMLEdgeAdj||0,Math.abs(spreadEdgePct||0));
+        const maxEdgeAdj=Math.max(hiMLEdgeAdj||0,loMLEdgeAdj||0,hiSpreadEdgePct||0,loSpreadEdgePct||0);
         if(absSpread<=10&&maxEdgeAdj>=3)rating="SHARP";
         else if(maxEdgeAdj>=8)rating="STRONG VALUE";
         else if(maxEdgeAdj>=4)rating="VALUE";
@@ -797,7 +804,7 @@ export default function Home() {
                 <button onClick={live.fetchScores} style={{background:C.yellow,border:"none",color:"#000",borderRadius:6,padding:"5px 14px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:10}}>↻ REFRESH LINES</button>
               </div>
               <p style={{fontSize:10,color:C.textMuted,margin:"4px 0 10px"}}>
-                Model vs market edge, vig-adjusted (~2.3% standard juice removed). <span style={{color:C.yellow}}>SHARP</span> = sweet spot (spread {"<"}10, 3%+ real edge). <span style={{color:C.green}}>+EV</span> = clears vig. Spreads capped at ±15.
+                Model vs market edge, vig-adjusted. Spread edge = cover probability over implied -110. ML edge = win probability over implied odds. <span style={{color:C.yellow}}>SHARP</span> = spread {"<"}10, 3%+ edge. Spreads capped at ±15.
                 {live.lastUpdate&&<span style={{color:C.textDim,marginLeft:6}}>Updated: {new Date(live.lastUpdate).toLocaleTimeString()}</span>}
               </p>
 
@@ -865,7 +872,15 @@ export default function Home() {
                             </div>
                             <div style={{background:C.surface,borderRadius:6,padding:"8px 10px"}}>
                               <div style={{fontSize:8,color:C.textMuted,fontWeight:700,marginBottom:3}}>MARKET SPREAD</div>
-                              {g.marketSpread!=null?(<><div style={{color:C.text,fontWeight:700,fontSize:14}}>{g.hiName} {g.marketSpread>0?"+":""}{g.marketSpread.toFixed(1)}</div>{g.spreadEdgePct!=null&&<div style={{fontSize:8,color:Math.abs(g.spreadEdgePct)>=5?C.yellow:Math.abs(g.spreadEdgePct)>=2?C.accent:C.textMuted}}>{g.spreadEdgePts>0?"+":""}{g.spreadEdgePts.toFixed(1)} pts ({g.spreadEdgePct>0?"+":""}{g.spreadEdgePct.toFixed(1)}%)</div>}</>):(<div style={{color:C.textMuted,fontSize:11}}>No line yet</div>)}
+                              {g.marketSpread!=null?(()=>{
+                                const bestCoverEdge=Math.max(g.hiSpreadEdgePct||0,g.loSpreadEdgePct||0);
+                                const coverTeam=(g.hiSpreadEdgePct||0)>=(g.loSpreadEdgePct||0)?g.hiName:g.loName;
+                                const coverEdge=(g.hiSpreadEdgePct||0)>=(g.loSpreadEdgePct||0)?g.hiSpreadEdgePct:g.loSpreadEdgePct;
+                                return(<><div style={{color:C.text,fontWeight:700,fontSize:14}}>{g.hiName} {g.marketSpread>0?"+":""}{g.marketSpread.toFixed(1)}</div>
+                                  {bestCoverEdge>0&&<div style={{fontSize:8,color:bestCoverEdge>=5?C.yellow:bestCoverEdge>=2?C.accent:C.textMuted}}>{coverTeam} cover: +{coverEdge.toFixed(1)}%</div>}
+                                  <div style={{fontSize:8,color:C.textMuted}}>{g.spreadEdgePts>0?"+":""}{g.spreadEdgePts.toFixed(1)} pts vs model</div>
+                                </>);
+                              })():(<div style={{color:C.textMuted,fontSize:11}}>No line yet</div>)}
                             </div>
                             <div style={{background:C.surface,borderRadius:6,padding:"8px 10px"}}>
                               <div style={{fontSize:8,color:C.textMuted,fontWeight:700,marginBottom:3}}>MODEL WIN %</div>
