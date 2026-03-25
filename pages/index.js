@@ -5,7 +5,7 @@ import {
   TEAMS, REGION_NAMES, SEED_ORDER, ROUND_LABELS, winProb, simTournament,
   DEFAULT_INJURIES, buildInjuryMap, getAdjEM, ALL_TEAM_NAMES,
   oddsToProb, probToOdds, kellyCriterion, americanToDecimal, GEO, F4GEO,
-  normalCDF, BASE_SD, gameSD, KNOWN_ODDS,
+  normalCDF, BASE_SD, gameSD, KNOWN_ODDS, adjustedSpread,
 } from "../lib/bracket";
 import useLiveScores from "../lib/useLiveScores";
 import Head from "next/head";
@@ -228,7 +228,7 @@ export default function Home() {
       if(!hiInfo||!loInfo)return null;
       const hiTeam=hiInfo.team,loTeam=loInfo.team;
       const hiEM=getAdjEM(hiTeam,injuryMap),loEM=getAdjEM(loTeam,injuryMap);
-      const mSpread=-((hiEM-loEM)*(hiTeam.adjT+loTeam.adjT)/200);
+      const mSpread=adjustedSpread(-((hiEM-loEM)*(hiTeam.adjT+loTeam.adjT)/200));
       const hiWinP=winProb(hiEM,hiTeam.adjT,loEM,loTeam.adjT,hiTeam.oRk,hiTeam.dRk,loTeam.oRk,loTeam.dRk);
       const loWinP=1-hiWinP;
       const espnGame=espnByTeam[m.hiName]||espnByTeam[m.loName];
@@ -291,22 +291,24 @@ export default function Home() {
       const maxEdgeAdj=Math.max(hiMLEdgeAdj||0,loMLEdgeAdj||0,Math.abs(spreadEdgePct||0));
       let rating="NO LINE";
       if(hasAnyOdds){
-        // SHARP: sweet spot (spread<10) with real edge after vig
-        // Requires spread edge ≥3% OR vig-adjusted ML edge ≥3%
         if(absSpread<=10&&maxEdgeAdj>=3) rating="SHARP";
         else if(maxEdgeAdj>=8) rating="STRONG VALUE";
         else if(maxEdgeAdj>=4) rating="VALUE";
         else if(maxEdgeAdj>=1.5) rating="+EV";
-        else if(maxEdge>=2) rating="THIN EDGE";
         else rating="FAIR";
       }
       // Determine value team from best available edge (all in %)
+      // SPREAD CAP: Don't pick spreads over ±15 — model unreliable at extremes
+      const SPREAD_CAP=15;
+      const spreadCapped=marketSpread!=null&&Math.abs(marketSpread)>SPREAD_CAP;
       let valueTeam=null,valueSide=null,bestEdge=0,bestKelly=null,bestType=null,bestLine=null;
       const edges=[
         {side:"hi",team:m.hiName,edge:hiMLEdge,kelly:hiKelly,type:"ML",line:hiML},
         {side:"lo",team:m.loName,edge:loMLEdge,kelly:loKelly,type:"ML",line:loML},
-        {side:"hi",team:m.hiName,edge:hiSpreadEdgePct!=null&&hiSpreadEdgePct>0?hiSpreadEdgePct:null,kelly:null,type:"spread",line:marketSpread},
-        {side:"lo",team:m.loName,edge:loSpreadEdgePct!=null&&loSpreadEdgePct>0?loSpreadEdgePct:null,kelly:null,type:"spread",line:marketSpread},
+        ...(!spreadCapped?[
+          {side:"hi",team:m.hiName,edge:hiSpreadEdgePct!=null&&hiSpreadEdgePct>0?hiSpreadEdgePct:null,kelly:null,type:"spread",line:marketSpread},
+          {side:"lo",team:m.loName,edge:loSpreadEdgePct!=null&&loSpreadEdgePct>0?loSpreadEdgePct:null,kelly:null,type:"spread",line:marketSpread},
+        ]:[]),
       ];
       for(const e of edges){if(e.edge!=null&&e.edge>bestEdge){bestEdge=e.edge;valueTeam=e.team;valueSide=e.side;bestKelly=e.kelly;bestType=e.type;bestLine=e.line;}}
       return{key:`${m.region}-${m.round}-${m.hiSeed}-${m.loSeed}`,round:m.round,region:m.region,hiSeed:m.hiSeed,loSeed:m.loSeed,hiName:m.hiName,loName:m.loName,modelSpread:mSpread,hiWinP,loWinP,marketSpread,hiML,loML,overUnder,spreadEdgePts,spreadEdgePct,hiMLEdge,loMLEdge,hiKelly,loKelly,rating,hasOdds:hasAnyOdds,valueTeam,bestEdge,bestKelly,bestType,bestLine,espnStatus:espnGame?.status||null};
@@ -350,7 +352,7 @@ export default function Home() {
 
         // Model calculations
         const hiEM=getAdjEM(hiTeam,injuryMap),loEM=getAdjEM(loTeam,injuryMap);
-        const mSpread=-((hiEM-loEM)*(hiTeam.adjT+loTeam.adjT)/200);
+        const mSpread=adjustedSpread(-((hiEM-loEM)*(hiTeam.adjT+loTeam.adjT)/200));
         const hiWinP=winProb(hiEM,hiTeam.adjT,loEM,loTeam.adjT,hiTeam.oRk,hiTeam.dRk,loTeam.oRk,loTeam.dRk);
         const loWinP=1-hiWinP;
 
@@ -406,56 +408,55 @@ export default function Home() {
         if(hiML){const ip=oddsToProb(hiML);hiMLEdge=ip!=null?((hiWinP-ip)*100):null;}
         if(loML){const ip=oddsToProb(loML);loMLEdge=ip!=null?((loWinP-ip)*100):null;}
 
-        // Find best edge
+        // Find best edge — cap spread picks at ±15
+        const SPREAD_CAP=15;
+        const spreadCapped=marketSpread!=null&&Math.abs(marketSpread)>SPREAD_CAP;
         const hiSpreadEdgePct=spreadEdgePct!=null?spreadEdgePct:null;
         const loSpreadEdgePct=spreadEdgePct!=null?-spreadEdgePct:null;
         let bestEdge=0,valueTeam=null,bestType=null,bestLine=null;
         const edges=[
           {team:hiName,edge:hiMLEdge,type:"ML",line:hiML},
           {team:loName,edge:loMLEdge,type:"ML",line:loML},
-          {team:hiName,edge:hiSpreadEdgePct>0?hiSpreadEdgePct:null,type:"spread",line:marketSpread},
-          {team:loName,edge:loSpreadEdgePct>0?loSpreadEdgePct:null,type:"spread",line:marketSpread},
+          ...(!spreadCapped?[
+            {team:hiName,edge:hiSpreadEdgePct>0?hiSpreadEdgePct:null,type:"spread",line:marketSpread},
+            {team:loName,edge:loSpreadEdgePct>0?loSpreadEdgePct:null,type:"spread",line:marketSpread},
+          ]:[]),
         ];
         for(const e of edges){if(e.edge!=null&&e.edge>bestEdge){bestEdge=e.edge;valueTeam=e.team;bestType=e.type;bestLine=e.line;}}
 
-        if(!valueTeam||bestEdge<=0)continue; // Track all picks with any edge
+        if(!valueTeam||bestEdge<=0)continue;
 
         // Grade the pick
         const hiIsHome=espnGame.home.name===hiName;
         const hiScore=hiIsHome?espnGame.home.score:espnGame.away.score;
         const loScore=hiIsHome?espnGame.away.score:espnGame.home.score;
-        const actualMargin=hiScore-loScore; // positive = hi seed won by this many
+        const actualMargin=hiScore-loScore;
 
         let result=null;
         if(bestType==="ML"){
           const mlWon=(espnGame.winner===valueTeam);
           if(mlWon){
-            // ML wins → always show ML
             result="W";
           } else {
-            // ML lost — check if spread was close in edge% and covered
-            const valueIsHi=valueTeam===hiName;
-            const spreadEdgeForValue=valueIsHi?hiSpreadEdgePct:loSpreadEdgePct;
-            const CLOSE_THRESHOLD=3.0; // within 3% edge counts as "close"
-            if(spreadEdgeForValue!=null&&spreadEdgeForValue>0&&(bestEdge-spreadEdgeForValue)<=CLOSE_THRESHOLD&&marketSpread!=null){
-              const teamSpread=valueIsHi?marketSpread:-marketSpread;
-              const teamMargin=valueIsHi?actualMargin:-actualMargin;
-              if(teamMargin+teamSpread>0){
-                // Spread covered — swap to spread pick
-                bestType="spread";bestLine=marketSpread;bestEdge=spreadEdgeForValue;
-                result="W";
-              } else if(teamMargin+teamSpread===0){
-                bestType="spread";bestLine=marketSpread;bestEdge=spreadEdgeForValue;
-                result="P";
-              } else {
-                result="L"; // both ML and spread lost
-              }
-            } else {
-              result="L";
-            }
+            // ML lost — check spread fallback (only if under cap)
+            if(!spreadCapped){
+              const valueIsHi=valueTeam===hiName;
+              const spreadEdgeForValue=valueIsHi?hiSpreadEdgePct:loSpreadEdgePct;
+              const CLOSE_THRESHOLD=3.0;
+              if(spreadEdgeForValue!=null&&spreadEdgeForValue>0&&(bestEdge-spreadEdgeForValue)<=CLOSE_THRESHOLD&&marketSpread!=null){
+                const teamSpread=valueIsHi?marketSpread:-marketSpread;
+                const teamMargin=valueIsHi?actualMargin:-actualMargin;
+                if(teamMargin+teamSpread>0){
+                  bestType="spread";bestLine=marketSpread;bestEdge=spreadEdgeForValue;
+                  result="W";
+                } else if(teamMargin+teamSpread===0){
+                  bestType="spread";bestLine=marketSpread;bestEdge=spreadEdgeForValue;
+                  result="P";
+                } else { result="L"; }
+              } else { result="L"; }
+            } else { result="L"; }
           }
         } else {
-          // Spread pick: did the value team cover?
           const valueIsHi=valueTeam===hiName;
           const teamSpread=valueIsHi?marketSpread:-marketSpread;
           const teamMargin=valueIsHi?actualMargin:-actualMargin;
@@ -470,12 +471,11 @@ export default function Home() {
         const hiMLEdgeAdj=hiMLEdge!=null?hiMLEdge-vigAdj:null;
         const loMLEdgeAdj=loMLEdge!=null?loMLEdge-vigAdj:null;
         const maxEdgeAdj=Math.max(hiMLEdgeAdj||0,loMLEdgeAdj||0,Math.abs(spreadEdgePct||0));
-        const maxEdge=Math.max(Math.abs(hiMLEdge||0),Math.abs(loMLEdge||0),Math.abs(spreadEdgePct||0));
         if(absSpread<=10&&maxEdgeAdj>=3)rating="SHARP";
         else if(maxEdgeAdj>=8)rating="STRONG VALUE";
         else if(maxEdgeAdj>=4)rating="VALUE";
         else if(maxEdgeAdj>=1.5)rating="+EV";
-        else rating="THIN EDGE";
+        else continue; // Skip — no actionable edge (was THIN EDGE)
 
         picks.push({
           gameId:gameKey,region:homeInfo.region,hiSeed,loSeed,hiName,loName,
@@ -492,6 +492,21 @@ export default function Home() {
   const recordW=picksRecord.filter(p=>p.result==="W").length;
   const recordL=picksRecord.filter(p=>p.result==="L").length;
   const recordP=picksRecord.filter(p=>p.result==="P").length;
+
+  // P/L calculation — $100 flat bets, spreads at -110, ML at listed odds
+  const recordPL=picksRecord.reduce((total,p)=>{
+    if(p.result==="P")return total;
+    if(p.result==="L")return total-100;
+    // Win
+    if(p.bestType==="ML"){
+      const ml=p.bestLine;
+      if(ml>0)return total+(100*(ml/100));
+      else return total+(100*(100/Math.abs(ml)));
+    } else {
+      // Spread at -110
+      return total+(100*(100/110));
+    }
+  },0);
 
   let lockedCount=0;
   for(const r of REGION_NAMES){const l=live.locked[r];for(const rd in l)for(const g in l[rd])if(l[rd][g]!=null)lockedCount++;}
@@ -781,17 +796,17 @@ export default function Home() {
                 <button onClick={live.fetchScores} style={{background:C.yellow,border:"none",color:"#000",borderRadius:6,padding:"5px 14px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",fontWeight:700,fontSize:10}}>↻ REFRESH LINES</button>
               </div>
               <p style={{fontSize:10,color:C.textMuted,margin:"4px 0 10px"}}>
-                Model vs market edge, vig-adjusted (~2.3% standard juice removed). <span style={{color:C.yellow}}>SHARP</span> = sweet spot (spread {"<"}10, 3%+ real edge). <span style={{color:C.green}}>+EV</span> = clears vig. <span style={{color:C.accent}}>THIN EDGE</span> = may just be vig noise.
+                Model vs market edge, vig-adjusted (~2.3% standard juice removed). <span style={{color:C.yellow}}>SHARP</span> = sweet spot (spread {"<"}10, 3%+ real edge). <span style={{color:C.green}}>+EV</span> = clears vig. Spreads capped at ±15.
                 {live.lastUpdate&&<span style={{color:C.textDim,marginLeft:6}}>Updated: {new Date(live.lastUpdate).toLocaleTimeString()}</span>}
               </p>
 
               {/* Rating filter */}
               <div style={{display:"flex",gap:5,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
                 <span style={{fontSize:9,color:C.textMuted,fontWeight:700,marginRight:2}}>RATING:</span>
-                {["ALL","SHARP","+EV","STRONG VALUE","VALUE","THIN EDGE","FAIR","NO LINE"].map(f=>{
+                {["ALL","SHARP","+EV","STRONG VALUE","VALUE","FAIR","NO LINE"].map(f=>{
                   const ct=f==="ALL"?upcomingBets.length:upcomingBets.filter(g=>g.rating===f).length;
                   if(f!=="ALL"&&ct===0)return null;
-                  const col=f==="SHARP"?C.yellow:f==="+EV"?C.green:f==="STRONG VALUE"?C.green:f==="VALUE"?C.blue:f==="THIN EDGE"?C.accent:f==="FAIR"?C.textDim:C.textMuted;
+                  const col=f==="SHARP"?C.yellow:f==="+EV"?C.green:f==="STRONG VALUE"?C.green:f==="VALUE"?C.blue:f==="FAIR"?C.textDim:C.textMuted;
                   return(<button key={f} onClick={()=>setBettingFilter(f)} style={{
                     background:bettingFilter===f?(f==="ALL"?C.yellow:col):"transparent",
                     border:`1px solid ${f==="ALL"?C.yellow:col}`,
@@ -822,7 +837,7 @@ export default function Home() {
                 return sorted.length>0?(
                   <div style={{display:"flex",flexDirection:"column",gap:10}}>
                     {sorted.map(g=>{
-                      const rc=g.rating==="SHARP"?C.yellow:g.rating==="+EV"?C.green:g.rating==="STRONG VALUE"?C.green:g.rating==="VALUE"?C.blue:g.rating==="THIN EDGE"?C.accent:C.textMuted;
+                      const rc=g.rating==="SHARP"?C.yellow:g.rating==="+EV"?C.green:g.rating==="STRONG VALUE"?C.green:g.rating==="VALUE"?C.blue:C.textMuted;
                       return(
                         <div key={g.key} style={{background:C.card,border:`1px solid ${g.rating==="SHARP"?"rgba(234,179,8,0.4)":g.rating==="STRONG VALUE"||g.rating==="+EV"?"rgba(34,197,94,0.3)":g.rating==="VALUE"?"rgba(59,130,246,0.3)":C.border}`,borderRadius:10,padding:14}}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -916,7 +931,7 @@ export default function Home() {
               </div>
 
               <p style={{fontSize:10,color:C.textMuted,margin:"0 0 14px"}}>
-                Every completed tournament game graded against the model's best value pick. Spread picks graded on cover. ML picks graded on outright win. All rated picks (Sharp, Strong Value, Value, +EV, Thin Edge) are tracked.
+                Every completed tournament game graded against the model's best value pick. Spread picks graded on cover. ML picks graded on outright win. Spreads capped at ±15. Only Sharp, Strong Value, Value, and +EV picks tracked.
               </p>
 
               {picksRecord.length>0?(
@@ -929,7 +944,7 @@ export default function Home() {
                     </tr></thead>
                     <tbody>{picksRecord.map(p=>{
                       const resultColor=p.result==="W"?C.green:p.result==="L"?C.red:C.textDim;
-                      const ratingColor=p.rating==="SHARP"?C.yellow:p.rating==="+EV"?C.green:p.rating==="STRONG VALUE"?C.green:p.rating==="VALUE"?C.blue:C.accent;
+                      const ratingColor=p.rating==="SHARP"?C.yellow:p.rating==="+EV"?C.green:p.rating==="STRONG VALUE"?C.green:p.rating==="VALUE"?C.blue:C.textMuted;
                       const teamSpread=p.valueTeam===p.hiName?p.marketSpread:-p.marketSpread;
                       return(
                         <tr key={p.gameId} style={{borderBottom:`1px solid rgba(42,53,80,0.3)`}}>
