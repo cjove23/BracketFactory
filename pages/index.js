@@ -143,6 +143,7 @@ export default function Home() {
   const [tab,setTab]=useState("live");
   const [bettingFilter,setBettingFilter]=useState("ALL");
   const [betTypeFilter,setBetTypeFilter]=useState("ALL"); // ALL, spread, ML
+  const [recordFilter,setRecordFilter]=useState("ALL");
   const cancelRef=useRef(false);
   const startRef=useRef(0);
 
@@ -911,30 +912,52 @@ export default function Home() {
           )}
 
           {/* RECORD TAB */}
-          {tab==="record"&&(
+          {tab==="record"&&(()=>{
+            const filteredPicks=recordFilter==="ALL"?picksRecord:picksRecord.filter(p=>p.rating===recordFilter);
+            const fW=filteredPicks.filter(p=>p.result==="W").length;
+            const fL=filteredPicks.filter(p=>p.result==="L").length;
+            const fP=filteredPicks.filter(p=>p.result==="P").length;
+            return(
             <div style={{background:C.surface,border:`1px solid rgba(34,197,94,0.25)`,borderRadius:12,padding:18}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
                 <h3 style={{fontSize:12,fontWeight:800,letterSpacing:1,color:C.green,margin:0}}>📊 PICKS RECORD</h3>
                 <div style={{display:"flex",alignItems:"center",gap:12}}>
                   <span style={{fontFamily:"monospace",fontSize:18,fontWeight:800}}>
-                    <span style={{color:C.green}}>{recordW}W</span>
+                    <span style={{color:C.green}}>{fW}W</span>
                     <span style={{color:C.textMuted}}> - </span>
-                    <span style={{color:C.red}}>{recordL}L</span>
-                    {recordP>0&&<><span style={{color:C.textMuted}}> - </span><span style={{color:C.textDim}}>{recordP}P</span></>}
+                    <span style={{color:C.red}}>{fL}L</span>
+                    {fP>0&&<><span style={{color:C.textMuted}}> - </span><span style={{color:C.textDim}}>{fP}P</span></>}
                   </span>
-                  {(recordW+recordL)>0&&(
-                    <span style={{fontFamily:"monospace",fontSize:14,color:recordW>recordL?C.green:recordW<recordL?C.red:C.textMuted,fontWeight:800}}>
-                      {((recordW/(recordW+recordL))*100).toFixed(0)}%
+                  {(fW+fL)>0&&(
+                    <span style={{fontFamily:"monospace",fontSize:14,color:fW>fL?C.green:fW<fL?C.red:C.textMuted,fontWeight:800}}>
+                      {((fW/(fW+fL))*100).toFixed(0)}%
                     </span>
                   )}
                 </div>
               </div>
 
-              <p style={{fontSize:10,color:C.textMuted,margin:"0 0 14px"}}>
+              <p style={{fontSize:10,color:C.textMuted,margin:"0 0 10px"}}>
                 Every completed tournament game graded against the model's best value pick. Spread picks graded on cover. ML picks graded on outright win. Spreads capped at ±15. Only Sharp, Strong Value, Value, and +EV picks tracked.
               </p>
 
-              {picksRecord.length>0?(
+              {/* Rating filter */}
+              <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+                {["ALL","SHARP","+EV","STRONG VALUE","VALUE"].map(f=>{
+                  const ct=f==="ALL"?picksRecord.length:picksRecord.filter(p=>p.rating===f).length;
+                  if(f!=="ALL"&&ct===0)return null;
+                  const w=f==="ALL"?recordW:picksRecord.filter(p=>p.rating===f&&p.result==="W").length;
+                  const l=f==="ALL"?recordL:picksRecord.filter(p=>p.rating===f&&p.result==="L").length;
+                  const col=f==="SHARP"?C.yellow:f==="+EV"?C.green:f==="STRONG VALUE"?C.green:f==="VALUE"?C.blue:C.textMuted;
+                  return(<button key={f} onClick={()=>setRecordFilter(f)} style={{
+                    background:recordFilter===f?(f==="ALL"?C.green:col):"transparent",
+                    border:`1px solid ${f==="ALL"?C.green:col}`,
+                    color:recordFilter===f?"#000":(f==="ALL"?C.green:col),
+                    borderRadius:4,padding:"3px 8px",cursor:"pointer",fontFamily:"monospace",fontWeight:700,fontSize:9,
+                  }}>{f} ({w}-{l})</button>);
+                })}
+              </div>
+
+              {filteredPicks.length>0?(
                 <div style={{overflowX:"auto"}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"monospace",fontSize:10}}>
                     <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>
@@ -942,7 +965,7 @@ export default function Home() {
                         <th key={h} style={{padding:"6px 8px",textAlign:"left",color:C.textMuted,fontWeight:700,fontSize:9}}>{h}</th>
                       ))}
                     </tr></thead>
-                    <tbody>{picksRecord.map(p=>{
+                    <tbody>{filteredPicks.map(p=>{
                       const resultColor=p.result==="W"?C.green:p.result==="L"?C.red:C.textDim;
                       const ratingColor=p.rating==="SHARP"?C.yellow:p.rating==="+EV"?C.green:p.rating==="STRONG VALUE"?C.green:p.rating==="VALUE"?C.blue:C.textMuted;
                       const teamSpread=p.valueTeam===p.hiName?p.marketSpread:-p.marketSpread;
@@ -971,12 +994,12 @@ export default function Home() {
                 </div>
               ):(
                 <div style={{textAlign:"center",padding:"40px 20px",color:C.textMuted}}>
-                  <div style={{fontSize:14}}>No completed games with betting data yet.</div>
-                  <div style={{fontSize:11,marginTop:6}}>Picks will appear here as tournament games go final. The model retroactively grades every completed game against its best value pick.</div>
+                  <div style={{fontSize:14}}>{recordFilter!=="ALL"?`No ${recordFilter} picks yet.`:"No completed games with betting data yet."}</div>
                 </div>
               )}
             </div>
-          )}
+            );
+          })()}
 
           {/* CHAMPIONS TAB */}
           {tab==="champion"&&results&&(
